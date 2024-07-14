@@ -258,6 +258,9 @@
             .hidden {
                 display: none !important;
             }
+            .bl_tx_prep_box {
+                background-color: transparent;
+            }
             .utxo {
                 display: inline-block;
                 background-color: #dddddd;
@@ -296,6 +299,11 @@
             .utxo_amnt {
                 word-wrap: break-word;
             }
+            .bl_tx_prep_box {
+                border: 1px solid black;
+                border-radius: 1rem;
+                padding: 1rem;
+            }
             @media screen and (max-width: 600px) {
             }
         </style>
@@ -311,6 +319,17 @@
     <body>
         <h1>Welcome to Statechain JS</h1>
         <div class="user_page">
+            <div class="bl_tx_prep_box hidden">
+                <h2>Tx preparation</h2>
+                <h3>Inputs:</h3>
+                <p>Amount available: <span class="amount_available"></span></p>
+                <p>Estimated fee needed: <span class="fee_needed"></span></p>
+                <p>Please remember to leave an amount available about the same as the estimated fee</p>
+                <div class="inputs"></div>
+                <h3>Outputs:</h3>
+                <div class="outputs"></div>
+                <div class="tx_submitter"></div>
+            </div>
             <div class="coinboxes">
                 <h2>Bitcoin utxos</h2>
                 <p>Original. Pure. Classy.</p>
@@ -470,7 +489,8 @@
                     //subtract enough for a fee to pay for this transaction
                     amnt = amnt - 500;
                     //subtract enough to pay for future withdrawal fees
-                    amnt = amnt - 2000;
+                    //I am disabling this to test whether it's better without it
+                    // amnt = amnt - 2000;
 
                     // subtract the modulus from my amount so that it is a multiple
                     // of 330 and then find out what multiple of 330 it is
@@ -542,10 +562,11 @@
                     });
 
                     // Add an extra output for paying for future fees
-                    funding_txdata.vout.push({
-                        value: 2000,
-                        scriptPubKey: tapscript.Address.toScriptPubKey( utxo[ "address" ] ),
-                    });
+                    // I am disabling this to test whether it's better without it
+                    // funding_txdata.vout.push({
+                    //     value: 2000,
+                    //     scriptPubKey: tapscript.Address.toScriptPubKey( utxo[ "address" ] ),
+                    // });
 
                     var funding_txid = tapscript.Tx.util.getTxid( funding_txdata );
 
@@ -606,18 +627,19 @@
                     console.log( txhex );
                     //remove funding utxo
                     delete statechainjs.state[ state_id ][ "utxos" ][ utxo_id ];
-                    //add change utxo
-                    var utxo_id = statechainjs.getPrivkey().substring( 0, 32 );
-                    statechainjs.state[ state_id ][ "utxos" ][ utxo_id ] = {
-                        state_id,
-                        type: "utxo",
-                        utxo_id,
-                        txid: funding_txid,
-                        vout: funding_txdata.vout.length - 1,
-                        amnt: 2000,
-                        address: utxo[ "address" ],
-                        btc_privkey: utxo[ "btc_privkey" ],
-                    }
+                    // add change utxo
+                    // I am disabling this to test whether it's better without it
+                    // var utxo_id = statechainjs.getPrivkey().substring( 0, 32 );
+                    // statechainjs.state[ state_id ][ "utxos" ][ utxo_id ] = {
+                    //     state_id,
+                    //     type: "utxo",
+                    //     utxo_id,
+                    //     txid: funding_txid,
+                    //     vout: funding_txdata.vout.length - 1,
+                    //     amnt: 2000,
+                    //     address: utxo[ "address" ],
+                    //     btc_privkey: utxo[ "btc_privkey" ],
+                    // }
                 },
                 makeOperator: () => {
                     var privkey = statechainjs.getPrivkey();
@@ -1013,7 +1035,11 @@
                         if ( !locktimes.includes( coin[ "locktime" ] ) ) locktimes.push( coin[ "locktime" ] );
                     });
                     if ( locktimes.length > 1 ) return alert( `you cannot withdraw multiple coins that have different locktimes, try again` );
+                    var current_blockheight = await statechainjs.getBlockheight();
                     var locktime = locktimes[ 0 ];
+                    var block_or_blocks = "blocks go";
+                    if ( locktime - current_blockheight === 1 ) block_or_blocks = "block goes";
+                    if ( current_blockheight < locktime ) return alert( `you cannot unilaterally withdraw this set of coins til ${locktime - current_blockheight} more ${block_or_blocks} by` );
                     var vin_with_extra_data = [];
                     var vout = [];
                     coin_ids.forEach( ( id, index ) => {
@@ -1115,6 +1141,8 @@
             // super_nostr
             var statechainjs_client = {
                 handled_events: [],
+                bl_tx_inputs: [],
+                bl_tx_outputs: [],
                 handleEvent: async ( state_id, event ) => {
                     var state = statechainjs.state[ state_id ];
                     try {
@@ -1299,13 +1327,15 @@
                         if ( amnt.split( "," ).length === 4 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + amnt.substring( amnt.indexOf( "," ) + 1, amnt.indexOf( "," ) + 2 ) + "." + amnt.substring( amnt.indexOf( "," ) + 2, amnt.indexOf( "," ) + 3 ) + "₿";
                         if ( amnt.includes( ".," ) || amnt.includes( ",." ) ) amnt = amnt.replace( ",", "" );
                         var real_utxo_html = `
-                            <div class="utxo real" data-utxo_id="${utxo[ "utxo_id" ]}">
+                            <div class="utxo real">
                                 <div class="coinpic">₿</div>
-                                <div class="utxo_amnt">${amnt}</div>
+                                <div class="utxo_amnt"></div>
                             </div>
                         `;
                         var div = document.createElement( "div" );
                         div.innerHTML = real_utxo_html;
+                        div.firstElementChild.setAttribute( "data-utxo_id", utxo[ "utxo_id" ] );
+                        div.getElementsByClassName( "utxo_amnt" )[ 0 ].innerText = amnt;
                         div.firstElementChild.onclick = e => {
                             if ( e.target.classList.contains( "utxo" ) ) var target = e.target;
                             else var target = e.target.parentElement;
@@ -1331,13 +1361,15 @@
                         if ( amnt.split( "," ).length === 4 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + amnt.substring( amnt.indexOf( "," ) + 1, amnt.indexOf( "," ) + 2 ) + "." + amnt.substring( amnt.indexOf( "," ) + 2, amnt.indexOf( "," ) + 3 ) + "₿";
                         if ( amnt.includes( ".," ) || amnt.includes( ",." ) ) amnt = amnt.replace( ",", "" );
                         var fake_utxo_html = `
-                            <div class="utxo fake" data-coin_id="${coin[ "coin_id" ]}">
+                            <div class="utxo fake">
                                 <div class="coinpic">SC</div>
-                                <div class="utxo_amnt">${amnt}</div>
+                                <div class="utxo_amnt"></div>
                             </div>
                         `;
                         var div = document.createElement( "div" );
                         div.innerHTML = fake_utxo_html;
+                        div.firstElementChild.setAttribute( "data-coin_id", coin[ "coin_id" ] );
+                        div.getElementsByClassName( "utxo_amnt" )[ 0 ].innerText = amnt;
                         div.firstElementChild.onclick = e => {
                             if ( e.target.classList.contains( "utxo" ) ) var target = e.target;
                             else var target = e.target.parentElement;
@@ -1370,6 +1402,14 @@
                         html += `
                             <p><button class="put_on_statechain">Put on statechain</button></p>
                         `;
+                        var existing_inputs = [];
+                        statechainjs_client.bl_tx_inputs.forEach( item => existing_inputs.push( item[ "utxo_id" ] ) );
+                        var disabled = "";
+                        console.log( existing_inputs, coin, coin[ "utxo_id" ], disabled );
+                        if ( existing_inputs.includes( coin[ "utxo_id" ] ) ) disabled = "disabled"
+                        html += `
+                            <p><button class="add_to_tx" ${disabled}>Add to transaction</button></p>
+                        `;
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
                         html += `
@@ -1400,6 +1440,10 @@
                     if ( coin[ "type" ] === "utxo" ) {
                         div.getElementsByClassName( "put_on_statechain" )[ 0 ].onclick = () => {
                             statechainjs.depositToStatechain( coin );
+                        }
+                        div.getElementsByClassName( "add_to_tx" )[ 0 ].onclick = () => {
+                            statechainjs_client.addUtxoToTx( coin );
+                            modalVanish();
                         }
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
@@ -1432,9 +1476,175 @@
                     await super_nostr.waitSomeSeconds( 1 );
                     statechainjs_client.constantlyBackup();
                 },
+                showBLTxPrep: async () => {
+                    $( '.bl_tx_prep_box .inputs' ).innerHTML = '';
+                    $( '.bl_tx_prep_box .outputs' ).innerHTML = '';
+                    var amnt_available = 0;
+                    statechainjs_client.bl_tx_inputs.forEach( utxo => {
+                        amnt_available = amnt_available + utxo [ "amnt" ];
+                        var amnt = utxo[ "amnt" ].toLocaleString();
+                        if ( amnt.split( "," ).length === 1 ) amnt = amnt + " sats";
+                        if ( amnt.split( "," ).length === 2 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + "K sats";
+                        if ( amnt.split( "," ).length === 3 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + "M sats";
+                        if ( amnt.includes( "M" ) && amnt.length === 7 ) amnt = "0.0" + amnt.substring( 0, amnt.indexOf( "M" ) ) + "₿";
+                        if ( amnt.includes( "M" ) && amnt.length === 8 ) amnt = "0." + amnt.substring( 0, amnt.indexOf( "M" ) ) + "₿";
+                        if ( amnt.includes( "M" ) && amnt.length === 9 ) amnt = amnt.substring( 0, 1 ) + "." + amnt.substring( 1, amnt.indexOf( "M" ) - 1 ) + "₿";
+                        if ( amnt.split( "," ).length === 4 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + amnt.substring( amnt.indexOf( "," ) + 1, amnt.indexOf( "," ) + 2 ) + "." + amnt.substring( amnt.indexOf( "," ) + 2, amnt.indexOf( "," ) + 3 ) + "₿";
+                        if ( amnt.includes( ".," ) || amnt.includes( ",." ) ) amnt = amnt.replace( ",", "" );
+                        var real_utxo_html = `
+                            <div class="utxo real">
+                                <div class="coinpic">₿</div>
+                                <div class="utxo_amnt"></div>
+                            </div>
+                        `;
+                        var div = document.createElement( "div" );
+                        div.innerHTML = real_utxo_html;
+                        div.firstElementChild.setAttribute( "data-utxo_id", utxo[ "utxo_id" ] );
+                        div.getElementsByClassName( "utxo_amnt" )[ 0 ].innerText = amnt;
+                        $( '.bl_tx_prep_box .inputs' ).append( div.firstElementChild );
+                    });
+                    var add_utxo_html = `
+                        <div class="utxo add">
+                            <div class="coinpic">+</div>
+                            <div class="utxo_amnt">Add output</div>
+                        </div>
+                    `;
+                    var adder1 = document.createElement( "div" );
+                    adder1.innerHTML = add_utxo_html;
+                    adder1.firstElementChild.onclick = () => {
+                        if ( !Object.keys( statechainjs.state ).length ) statechainjs.makeUser();
+                        var state_id = Object.keys( statechainjs.state )[ 0 ];
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div>
+                                <p>Enter a bitcoin address to send money to</p>
+                                <p><input class="destino"></p>
+                                <p>Enter the amount of sats you want to send there</p>
+                                <p><input type="number" min="330" step="1" class="send_amnt"></p>
+                                <p><button class="submit_output">Submit</button></p>
+                            </div>
+                        `;
+                        div.getElementsByClassName( "submit_output" )[ 0 ].onclick = e => {
+                            var value = Number( e.target.parentElement.parentElement.getElementsByClassName( "send_amnt" )[ 0 ].value );
+                            var destino = e.target.parentElement.parentElement.getElementsByClassName( "destino" )[ 0 ].value;
+                            statechainjs_client.bl_tx_outputs.push({
+                                value,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( destino ),
+                            });
+                            modalVanish();
+                        }
+                        showModal( div.firstElementChild );
+                    }
+
+                    var adder2 = document.createElement( "div" );
+                    adder2.innerHTML = add_utxo_html;
+                    adder2.firstElementChild.onclick = () => {
+                        if ( !Object.keys( statechainjs.state ).length ) statechainjs.makeUser();
+                        var state_id = Object.keys( statechainjs.state )[ 0 ];
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div>
+                                <p>Enter a bitcoin address to send money to</p>
+                                <p><input class="destino"></p>
+                                <p>Enter the amount you want to send there</p>
+                                <p><input type="number" min="330" step="1" class="send_amnt" value="330"></p>
+                                <p><button class="submit_output">Submit</button></p>
+                            </div>
+                        `;
+                        div.getElementsByClassName( "submit_output" )[ 0 ].onclick = e => {
+                            var value = Number( e.target.parentElement.parentElement.getElementsByClassName( "send_amnt" )[ 0 ].value );
+                            var destino = e.target.parentElement.parentElement.getElementsByClassName( "destino" )[ 0 ].value;
+                            statechainjs_client.bl_tx_outputs.push({
+                                value,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( destino ),
+                            });
+                            modalVanish();
+                        }
+                        showModal( div.firstElementChild );
+                    }
+
+                    $( '.bl_tx_prep_box .outputs' ).innerHTML = '';
+                    $( '.bl_tx_prep_box .outputs' ).append( adder1.firstElementChild );
+
+                    var output_html = `<div>`;
+                    statechainjs_client.bl_tx_outputs.forEach( output => {
+                        amnt_available = amnt_available - output[ "value" ];
+                        output_html += `<input value="${output[ "value" ].toLocaleString() + " sats - " + tapscript.Address.fromScriptPubKey( output[ "scriptPubKey" ] )}" disabled>`
+                    });
+                    output_html += `</div>`;
+
+                    if ( statechainjs_client.bl_tx_outputs.length ) {
+                        $( '.bl_tx_prep_box .outputs' ).innerHTML = output_html;
+                        $( '.bl_tx_prep_box .outputs' ).append( adder2.firstElementChild );
+                    }
+
+                    var disabled_or_not = "disabled";
+                    if ( statechainjs_client.bl_tx_inputs.length && statechainjs_client.bl_tx_outputs.length ) {
+                        disabled_or_not = "";
+                    }
+                    var div = document.createElement( "div" );
+                    div.innerHTML = `
+                        <p><button class="submit_tx" ${disabled_or_not} ${onclick}>Submit tx</button></p>
+                    `;
+                    $( '.bl_tx_prep_box .tx_submitter' ).innerHTML = '';
+                    $( '.bl_tx_prep_box .tx_submitter' ).append( div );
+                    var fee_needed = 500;
+                    if ( statechainjs_client.bl_tx_inputs.length && statechainjs_client.bl_tx_outputs.length ) {
+                        div.getElementsByClassName( "submit_tx" )[ 0 ].onclick = async () => {
+                            var conf = true;
+                            if ( amnt_available < fee_needed ) var conf = confirm( `Your fee is below the expected fee needed! Are you sure you want to use this fee? It might bork everything` );
+                            if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) var conf = confirm( `Your fee is over 5% higher than the expected fee needed! Are you sure you want to use this fee?` );
+                            if ( !conf ) return;
+                            console.log( 'test' );
+                            var vin_with_extra_data = [];
+                            var vout = JSON.parse( JSON.stringify( statechainjs_client.bl_tx_outputs ) );
+                            statechainjs_client.bl_tx_inputs.forEach( coin => {
+                                //remove the utxo from your list of utxos
+                                var state_id = coin[ "state_id" ];
+                                delete statechainjs.state[ state_id ][ "utxos" ][ coin[ "utxo_id" ] ];
+                                vin_with_extra_data.push({
+                                    txid: coin[ "txid" ],
+                                    vout: coin[ "vout" ],
+                                    prevout: {
+                                        value: coin[ "amnt" ],
+                                        scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "address" ] ),
+                                    },
+                                    witness: [],
+                                    privkey: coin[ "btc_privkey" ],
+                                });
+                            });
+                            vin = JSON.parse( JSON.stringify( vin_with_extra_data ) );
+                            vin.forEach( item => delete item[ "privkey" ] );
+                            var withdraw_txdata = tapscript.Tx.create({
+                                vin,
+                                vout,
+                            });
+                            var i; for ( i=0; i<vin.length; i++ ) {
+                                var privkey = vin_with_extra_data[ i ][ "privkey" ];
+                                var sighash = tapscript.Signer.taproot.hash( withdraw_txdata, i ).hex;
+                                var sig = await nobleSecp256k1.schnorr.sign( sighash, privkey );
+                                vin[ i ].witness.push( sig );
+                            }
+                            var txhex = tapscript.Tx.encode( withdraw_txdata ).hex;
+                            console.log( 'here is your withdraw tx:' );
+                            console.log( txhex );
+                            statechainjs_client.bl_tx_inputs = [];
+                            statechainjs_client.bl_tx_outputs = [];
+                        }
+                    }
+
+                    if ( statechainjs_client.bl_tx_inputs.length ) $( '.bl_tx_prep_box' ).classList.remove( "hidden" );
+                    else $( '.bl_tx_prep_box' ).classList.add( "hidden" );
+                    $( '.bl_tx_prep_box .amount_available' ).innerText = amnt_available.toLocaleString() + " sats";
+                    $( '.bl_tx_prep_box .fee_needed' ).innerText = fee_needed.toLocaleString() + " sats";
+                    await super_nostr.waitSomeSeconds( 1 );
+                    statechainjs_client.showBLTxPrep();
+                },
+                addUtxoToTx: coin => statechainjs_client.bl_tx_inputs.push( JSON.parse( JSON.stringify( coin ) ) ),
             }
             if ( $_GET[ "operator" ] !== "true" ) {
                 statechainjs_client.populateCoinboxes();
+                statechainjs_client.showBLTxPrep();
             } else {
                 $( '.user_page' ).classList.add( "hidden" );
                 statechainjs_client.makeOperator();
