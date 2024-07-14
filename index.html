@@ -730,7 +730,7 @@
                     coins.push( coin );
                     console.log( `send this message to the user:` );
                     console.log( JSON.stringify( coins ) );
-                    alert( `send the message in your console to your recipient` );
+                    return coins;
                 },
                 receiveCoins: async coins => {
                     if ( Object.keys( statechainjs.state ).length ) {
@@ -1004,7 +1004,7 @@
                     if ( !state_id ) state_id = Object.keys( statechainjs.state )[ 0 ];
                     var fee_utxo = statechainjs.findFeeUtxo( state_id );
                     if ( !fee_utxo ) return alert( `you do not have enough funds on the base layer to withdraw your statecoins and pay the requisite fees. Add funds and try again` );
-                    if ( !fee_utxo[ "amnt" ] < 830 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
+                    if ( fee_utxo[ "amnt" ] < 830 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
                     if ( !coin_ids ) coin_ids = [ Object.keys( statechainjs.state[ state_id ][ "statecoins" ] )[ 0 ] ];
                     var address = statechainjs.state[ state_id ][ "address" ];
                     var locktimes = [];
