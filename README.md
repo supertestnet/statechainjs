@@ -5,18 +5,18 @@ Differences between Ruben's Initial [Statechains](https://medium.com/@RubenSomse
 
 Initial statechains idea
 
-- Federated Model
-- Adaptor Signatures
+- Federated model
+- Adaptor signatures
 
 Mercury implementation
 
 - MuSig
 - Absolute Timelocks: these limit the amount of time you can hold a statechain utxo before you must submit (and pay for) its backup transaction on the base layer. The user is responsible for doing so at the correct time, and applications can do this automatically.
-- HSM for Key Deletion: Utilizes a Hardware Security Module (HSM) to semi-prove key deletion.
-- Lightning Network Interoperability
+- HSM (Hardware Security Module) is used to semi-prove key deletion.
+- Lightning network interoperability
 
 StatechainJS implementation
 
-- Regular Multisig
-- Key Handling: The operator temporarily stores the private key in a variable called `recovered_privkey` and overwrites it with `null` after signing the user's transaction. Note that this may leave the private key in RAM until overwritten by new data.
-- No Lightning Integration
+- Regular multisig
+- Key handling: the operator temporarily stores his private key in a variable called `recovered_privkey` and overwrites it with `null` after signing the user's transaction. Note that this may leave the private key in RAM until overwritten by new data.
+- No lightning integration
