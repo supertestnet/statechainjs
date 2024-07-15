@@ -261,7 +261,10 @@
             .operator_page {
                 word-wrap: break-word;
             }
-            .bl_tx_prep_box {
+            .bl_tx_prep_box, .sc_tx_prep_box, .coop_tx_prep_box {
+                border: 1px solid black;
+                border-radius: 1rem;
+                padding: 1rem;
                 background-color: transparent;
             }
             .utxo_box {
@@ -314,10 +317,8 @@
             .utxo_amnt {
                 word-wrap: break-word;
             }
-            .bl_tx_prep_box {
-                border: 1px solid black;
-                border-radius: 1rem;
-                padding: 1rem;
+            .modal input {
+                width: 90%;
             }
             @media screen and (max-width: 600px) {
             }
@@ -344,6 +345,24 @@
                 <h3>Outputs:</h3>
                 <div class="outputs"></div>
                 <div class="tx_submitter"></div>
+            </div>
+            <div class="coop_tx_prep_box hidden">
+                <h2>Tx preparation</h2>
+                <p>Amount available: <span class="amount_available"></span></p>
+                <p>Estimated fee needed: <span class="fee_needed"></span></p>
+                <p>Please remember to leave an amount available about the same as the estimated fee</p>
+                <h3>Inputs:</h3>
+                <div class="inputs"></div>
+                <h3>Outputs:</h3>
+                <div class="outputs"></div>
+                <div class="tx_submitter"></div>
+            </div>
+            <div class="sc_tx_prep_box hidden">
+                <h2>Tx preparation</h2>
+                <p>Amount added so far: <span class="amount_available"></span></p>
+                <p>Estimated fee needed: <span class="fee_needed">0</span></p>
+                <div class="inputs"></div>
+                <p><button class="submit_tx">Send coins</button></p>
             </div>
             <div class="coinboxes">
                 <h2>Bitcoin utxos</h2>
@@ -784,7 +803,7 @@
                         return msg_for_user;
                     } catch( e ) {}
                 },
-                sendCoin: async ( coin, coins = [] ) => {
+                sendCoin: async ( coin, coins = [], skiplog ) => {
                     var coin_id;
                     if ( !coin ) {
                         var state_id = Object.keys( statechainjs.state )[ 0 ];
@@ -813,8 +832,8 @@
                     coin[ "label" ] = "";
                     delete statechainjs.state[ state_id ][ "statecoins" ][ coin_id ];
                     coins.push( coin );
-                    console.log( `send this message to the user:` );
-                    console.log( JSON.stringify( coins ) );
+                    if ( !skiplog ) console.log( `send this message to your recipient:` );
+                    if ( !skiplog ) console.log( JSON.stringify( coins ) );
                     return coins;
                 },
                 receiveCoins: async coins => {
@@ -887,9 +906,9 @@
                             alert( `aborting because one of these numbers didn't match: prior_sigs.length, prior_txs.length, num_of_times_signed` );
                             continue;
                         }
-                        var tx_info;
-                        var prior_txid;
-                        var prior_vout;
+                        var tx_info = null;
+                        var prior_txid = null;
+                        var prior_vout = null;
                         var dont_add = false;
                         var i; for ( i=0; i<prior_txs.length; i++ ) {
                             var prior_sig = withdraw_sigs[ i ].substring( 0, 128 );
@@ -1217,111 +1236,6 @@
                     //remove the fee utxo from your list of utxos
                     delete statechainjs.state[ state_id ][ "utxos" ][ fee_utxo[ "utxo_id" ] ];
                 },
-                cooperativelyWithdrawFromStatechain: async ( state_id, coin_ids ) => {
-                    if ( !state_id ) state_id = Object.keys( statechainjs.state )[ 0 ];
-                    if ( !coin_ids ) coin_ids = [ Object.keys( statechainjs.state[ state_id ][ "statecoins" ] )[ 0 ] ];
-                    var address = statechainjs.state[ state_id ][ "address" ];
-                    var sum = 0;
-                    var vin_with_extra_data = [];
-                    coin_ids.forEach( ( id, index ) => {
-                        var coins = JSON.parse( JSON.stringify( statechainjs.state[ state_id ][ "statecoins" ] ) );
-                        var coin = coins[ id ];
-                        vin_with_extra_data.push({
-                            txid: coin[ "funding_txid" ],
-                            vout: coin[ "vout" ],
-                            prevout: {
-                                value: coin[ "amnt" ],
-                                scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
-                            },
-                            witness: [],
-                            privkey: coin[ "privkey" ],
-                            operator: coin[ "operator" ],
-                            a_value: coin[ "a_value" ],
-                            coin_id: coin[ "coin_id" ],
-                            state_id: coin[ "state_id" ],
-                            parity_byte: coin[ "parity_byte" ],
-                            script: coin[ "script" ],
-                        });
-                        sum = sum + coin[ "amnt" ];
-                    });
-                    vin = JSON.parse( JSON.stringify( vin_with_extra_data ) );
-                    vin.forEach( item => {
-                        delete item[ "privkey" ];
-                        delete item[ "operator" ];
-                        delete item[ "a_value" ];
-                        delete item[ "coin_id" ];
-                        delete item[ "state_id" ];
-                        delete item[ "parity_byte" ];
-                        delete item[ "script" ];
-                    });
-                    vout = [{
-                        value: sum - 500,
-                        scriptPubKey: tapscript.Address.toScriptPubKey( address ),
-                    }];
-                    var withdraw_txdata = tapscript.Tx.create({
-                        vin,
-                        vout,
-                    });
-                    var i; for ( i=0; i<vin.length; i++ ) {
-                        var keyshard_1 = vin_with_extra_data[ i ][ "privkey" ];
-                        var operator = vin_with_extra_data[ i ][ "operator" ];
-                        var state_id = vin_with_extra_data[ i ][ "state_id" ];
-                        var msg_for_operator = {
-                            type: "transfer",
-                            msg: {
-                                nprofile: operator,
-                                a_value: vin_with_extra_data[ i ][ "a_value" ],
-                                coin_id: vin_with_extra_data[ i ][ "coin_id" ],
-                            }
-                        }
-                        console.log( `send this message to the operator:` );
-                        console.log( JSON.stringify( msg_for_operator ) );
-                        if ( statechainjs_client ) var operator_response = await statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
-                        else var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
-                        var keyshard_2 = operator_response[ "msg" ][ "privkey" ];
-                        var full_privkey = statechainjs.add2Privkeys( keyshard_1, keyshard_2 );
-                        var script = vin_with_extra_data[ i ][ "script" ];
-                        var taptree = [tapscript.Tap.encodeScript( script )];
-                        var [ seckey ] = tapscript.Tap.getSecKey( full_privkey, { tree: taptree });
-                        var sighash = tapscript.Signer.taproot.hash( withdraw_txdata, i ).hex;
-                        var sig = await nobleSecp256k1.schnorr.sign( sighash, seckey );
-                        var parity_byte = vin_with_extra_data[ i ][ "parity_byte" ];
-                        var operator_pubkey_with_parity = parity_byte + script[ 2 ];
-                        var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( keyshard_1, true );
-                        var backup_pubkey = statechainjs.add2Pubkeys( operator_pubkey_with_parity, multisig_pubkey_with_parity ).substring( 2 );
-                        var expected_pubkey = statechainjs.getPubkey( full_privkey );
-                        var [ tpubkey ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree });
-                        var multisig_with_money = tapscript.Address.p2tr.fromPubKey( tpubkey, statechainjs.network );
-                        console.log( "multisig_with_money:", multisig_with_money, "its pubkey:", tpubkey, "its privkey:", seckey );
-                        if ( backup_pubkey !== expected_pubkey ) return alert( `you must withdraw this coin unilaterally, then try again:`, vin_with_extra_data[ i ][ "coin_id" ], "state_id:", state_id );
-                        vin[ i ].witness.push( sig );
-                    }
-                    var txhex = tapscript.Tx.encode( withdraw_txdata ).hex;
-                    console.log( 'here is your withdraw tx:' );
-                    console.log( txhex );
-                    coin_ids.forEach( ( id, index ) => {
-                        var coins = JSON.parse( JSON.stringify( statechainjs.state[ state_id ][ "statecoins" ] ) );
-                        var coin = coins[ id ];
-                        //remove the statechain utxo from your list of statechain utxos
-                        delete statechainjs.state[ state_id ][ "statecoins" ][ id ];
-                    });
-                    var txid = tapscript.Tx.util.getTxid( withdraw_txdata );
-                    //add the statechain utxos & change to your list of utxos
-                    vout.forEach( ( item, index ) => {
-                        var utxo_id = statechainjs.getPrivkey().substring( 0, 32 );
-                        statechainjs.state[ state_id ][ "utxos" ][ utxo_id ] = {
-                            state_id,
-                            type: "utxo",
-                            utxo_id,
-                            txid,
-                            vout: index,
-                            amnt: item[ "value" ],
-                            address: statechainjs.state[ state_id ][ "address" ],
-                            btc_privkey: statechainjs.state[ state_id ][ "rcv_privkey" ],
-                            label: "",
-                        }
-                    });
-                },
             }
         </script>
         <script>
@@ -1335,6 +1249,9 @@
                 handled_events: [],
                 bl_tx_inputs: [],
                 bl_tx_outputs: [],
+                sc_tx_inputs: [],
+                // coop_inputs: [],
+                // coop_outputs: [],
                 handleEvent: async ( state_id, event ) => {
                     var state = statechainjs.state[ state_id ];
                     try {
@@ -1626,17 +1543,25 @@
                         var existing_inputs = [];
                         statechainjs_client.bl_tx_inputs.forEach( item => existing_inputs.push( item[ "utxo_id" ] ) );
                         var disabled = "";
-                        if ( existing_inputs.includes( coin[ "utxo_id" ] ) ) disabled = "disabled"
+                        if ( existing_inputs.includes( coin[ "utxo_id" ] ) ) disabled = "disabled";
                         html += `
                             <p><button class="add_to_tx" ${disabled}>Add to transaction</button></p>
                         `;
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
+                        var existing_inputs = [];
+                        statechainjs_client.sc_tx_inputs.forEach( item => existing_inputs.push( item[ "coin_id" ] ) );
+                        var disabled = "";
+                        if ( existing_inputs.includes( coin[ "coin_id" ] ) ) disabled = "disabled";
                         html += `
-                            <p><button class="send_statecoin">Send coin</button></p>
+                            <p><button class="send_statecoin" ${disabled}>Send coin</button></p>
                         `;
+                        var existing_inputs = [];
+                        statechainjs_client.bl_tx_inputs.forEach( item => existing_inputs.push( item[ "coin_id" ] ) );
+                        var disabled = "";
+                        if ( existing_inputs.includes( coin[ "coin_id" ] ) ) disabled = "disabled";
                         html += `
-                            <p><button class="withdraw_cooperatively">Withdraw cooperatively</button></p>
+                            <p><button class="add_to_tx" ${disabled}>Add to transaction</button></p>
                         `;
                         html += `
                             <p><button class="withdraw_unilaterally">Withdraw unilaterally</button></p>
@@ -1667,6 +1592,7 @@
                         div.getElementsByClassName( "add_to_tx" )[ 0 ].onclick = () => {
                             statechainjs_client.addUtxoToTx( coin );
                             modalVanish();
+                            window.scrollTo( 0, 1 );
                         }
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
@@ -1682,13 +1608,16 @@
                             `;
                             showModal( inner.firstElementChild );
                         }
-                        div.getElementsByClassName( "send_statecoin" )[ 0 ].onclick = async () => {
-                            statechainjs.sendCoin( coin );
+                        div.getElementsByClassName( "send_statecoin" )[ 0 ].onclick = () => {
+                            statechainjs_client.addCoinToTx( coin );
                             modalVanish();
+                            window.scrollTo( 0, 1 );
                         }
-                        div.getElementsByClassName( "withdraw_cooperatively" )[ 0 ].onclick = async () => {
-                            statechainjs.cooperativelyWithdrawFromStatechain( coin[ "state_id" ], [ coin[ "coin_id" ] ] );
+                        div.getElementsByClassName( "add_to_tx" )[ 0 ].onclick = async () => {
+                            // statechainjs_client.addCoinToCoopTx( coin );
+                            statechainjs_client.addUtxoToTx( coin );
                             modalVanish();
+                            window.scrollTo( 0, 1 );
                         }
                         div.getElementsByClassName( "withdraw_unilaterally" )[ 0 ].onclick = async () => {
                             statechainjs.unilaterallyWithdrawFromStatechain( coin[ "state_id" ], [ coin[ "coin_id" ] ] );
@@ -1726,7 +1655,7 @@
                     $( '.bl_tx_prep_box .outputs' ).innerHTML = '';
                     var amnt_available = 0;
                     statechainjs_client.bl_tx_inputs.forEach( utxo => {
-                        amnt_available = amnt_available + utxo [ "amnt" ];
+                        amnt_available = amnt_available + utxo[ "amnt" ];
                         var amnt = utxo[ "amnt" ].toLocaleString();
                         if ( amnt.split( "," ).length === 1 ) amnt = amnt + " sats";
                         if ( amnt.split( "," ).length === 2 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + "K sats";
@@ -1736,23 +1665,38 @@
                         if ( amnt.includes( "M" ) && amnt.length === 9 ) amnt = amnt.substring( 0, 1 ) + "." + amnt.substring( 1, amnt.indexOf( "M" ) - 1 ) + "₿";
                         if ( amnt.split( "," ).length === 4 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + amnt.substring( amnt.indexOf( "," ) + 1, amnt.indexOf( "," ) + 2 ) + "." + amnt.substring( amnt.indexOf( "," ) + 2, amnt.indexOf( "," ) + 3 ) + "₿";
                         if ( amnt.includes( ".," ) || amnt.includes( ",." ) ) amnt = amnt.replace( ",", "" );
-                        var real_utxo_html = `
-                            <div class="utxo_box">
-                                <div class="utxo real">
-                                    <div class="coinpic">₿</div>
-                                    <div class="utxo_amnt"></div>
+                        if ( utxo[ "type" ] === "utxo" ) {
+                            var utxo_html = `
+                                <div class="utxo_box">
+                                    <div class="utxo real">
+                                        <div class="coinpic">₿</div>
+                                        <div class="utxo_amnt"></div>
+                                    </div>
+                                    <div class="utxo_label"></div>
                                 </div>
-                                <div class="utxo_label"></div>
-                            </div>
-                        `;
+                            `;
+                        } else {
+                            var utxo_html = `
+                                <div class="utxo_box">
+                                    <div class="utxo fake">
+                                        <div class="coinpic">SC</div>
+                                        <div class="utxo_amnt"></div>
+                                    </div>
+                                    <div class="utxo_label"></div>
+                                </div>
+                            `;
+                        }
                         var div = document.createElement( "div" );
-                        div.innerHTML = real_utxo_html;
+                        div.innerHTML = utxo_html;
                         div.getElementsByClassName( "utxo" )[ 0 ].setAttribute( "data-utxo_id", utxo[ "utxo_id" ] );
                         div.getElementsByClassName( "utxo_amnt" )[ 0 ].innerText = amnt;
-                        var label = statechainjs.state[ utxo[ "state_id" ] ].utxos[ utxo[ "utxo_id" ] ].label;
+                        if ( utxo[ "type" ] === "utxo" ) var id = utxo[ "utxo_id" ];
+                        else var id = utxo[ "coin_id" ];
+                        if ( utxo[ "type" ] === "utxo" ) var label = statechainjs.state[ utxo[ "state_id" ] ].utxos[ id ].label;
+                        else var label = statechainjs.state[ utxo[ "state_id" ] ].statecoins[ id ].label;
                         if ( !label ) label = "[unlabeled]";
                         div.getElementsByClassName( "utxo_label" )[ 0 ].innerText = label;
-                        div.getElementsByClassName( "utxo_label" )[ 0 ].setAttribute( "data-utxo_id", utxo[ "utxo_id" ] );
+                        div.getElementsByClassName( "utxo_label" )[ 0 ].setAttribute( "data-utxo_id", id );
                         $( '.bl_tx_prep_box .inputs' ).append( div.firstElementChild );
                     });
                     var add_utxo_html = `
@@ -1838,7 +1782,7 @@
                     }
                     var div = document.createElement( "div" );
                     div.innerHTML = `
-                        <p><button class="submit_tx" ${disabled_or_not} ${onclick}>Submit tx</button></p>
+                        <p><button class="submit_tx" ${disabled_or_not}>Submit tx</button></p>
                     `;
                     $( '.bl_tx_prep_box .tx_submitter' ).innerHTML = '';
                     $( '.bl_tx_prep_box .tx_submitter' ).append( div );
@@ -1849,24 +1793,62 @@
                             if ( amnt_available < fee_needed ) var conf = confirm( `Your fee is below the expected fee needed! Are you sure you want to use this fee? It might bork everything` );
                             if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) var conf = confirm( `Your fee is over 5% higher than the expected fee needed! Are you sure you want to use this fee?` );
                             if ( !conf ) return;
-                            console.log( 'test' );
                             var vin_with_extra_data = [];
                             var vout = JSON.parse( JSON.stringify( statechainjs_client.bl_tx_outputs ) );
-                            statechainjs_client.bl_tx_inputs.forEach( coin => {
+                            var utxos_to_remove = [];
+                            var coins_to_remove = [];
+                            var i; for ( i=0; i<statechainjs_client.bl_tx_inputs.length; i++ ) {
+                                var coin = statechainjs_client.bl_tx_inputs[ i ];
+                                if ( coin[ "type" ] === "statecoin" ) {
+                                    var operator = coin[ "operator" ];
+                                    var state_id = coin[ "state_id" ];
+                                    var keyshard_1 = coin[ "privkey" ];
+                                    var msg_for_operator = {
+                                        type: "transfer",
+                                        msg: {
+                                            nprofile: operator,
+                                            a_value: coin[ "a_value" ],
+                                            coin_id: coin[ "coin_id" ],
+                                        }
+                                    }
+                                    console.log( `send this message to the operator:` );
+                                    console.log( JSON.stringify( msg_for_operator ) );
+                                    if ( statechainjs_client ) var operator_response = await statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
+                                    else var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                                    var keyshard_2 = operator_response[ "msg" ][ "privkey" ];
+                                    var full_privkey = statechainjs.add2Privkeys( keyshard_1, keyshard_2 );
+                                    var script = coin[ "script" ];
+                                    var taptree = [tapscript.Tap.encodeScript( script )];
+                                    var [ seckey ] = tapscript.Tap.getSecKey( full_privkey, { tree: taptree });
+                                    var parity_byte = coin[ "parity_byte" ];
+                                    var operator_pubkey_with_parity = parity_byte + script[ 2 ];
+                                    var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( keyshard_1, true );
+                                    var backup_pubkey = statechainjs.add2Pubkeys( operator_pubkey_with_parity, multisig_pubkey_with_parity ).substring( 2 );
+                                    var expected_pubkey = statechainjs.getPubkey( full_privkey );
+                                    var [ tpubkey ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree });
+                                    var multisig_with_money = tapscript.Address.p2tr.fromPubKey( tpubkey, statechainjs.network );
+                                    if ( backup_pubkey !== expected_pubkey ) return alert( `you must withdraw this coin unilaterally, then try again:`, coin[ "coin_id" ], "state_id:", state_id );
+                                }
                                 //remove the utxo from your list of utxos
                                 var state_id = coin[ "state_id" ];
-                                delete statechainjs.state[ state_id ][ "utxos" ][ coin[ "utxo_id" ] ];
+                                if ( coin[ "type" ] === "utxo" ) utxos_to_remove.push( coin[ "utxo_id" ] );
+                                else coins_to_remove.push( coin[ "coin_id" ] );
+                                if ( coin[ "type" ] === "utxo" ) var txid_to_use = coin[ "txid" ];
+                                else var txid_to_use = coin[ "funding_txid" ];
+                                if ( coin[ "type" ] === "utxo" ) var addy_to_use = coin[ "address" ];
+                                else var addy_to_use = coin[ "multisig" ];
                                 vin_with_extra_data.push({
-                                    txid: coin[ "txid" ],
+                                    txid: txid_to_use,
                                     vout: coin[ "vout" ],
                                     prevout: {
                                         value: coin[ "amnt" ],
-                                        scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "address" ] ),
+                                        scriptPubKey: tapscript.Address.toScriptPubKey( addy_to_use ),
                                     },
                                     witness: [],
-                                    privkey: coin[ "btc_privkey" ],
                                 });
-                            });
+                                if ( coin[ "type" ] === "utxo" ) vin_with_extra_data[ vin_with_extra_data.length - 1 ][ "privkey" ] = coin[ "btc_privkey" ];
+                                else vin_with_extra_data[ vin_with_extra_data.length - 1 ][ "privkey" ] = seckey;
+                            }
                             vin = JSON.parse( JSON.stringify( vin_with_extra_data ) );
                             vin.forEach( item => delete item[ "privkey" ] );
                             var withdraw_txdata = tapscript.Tx.create({
@@ -1882,6 +1864,8 @@
                             var txhex = tapscript.Tx.encode( withdraw_txdata ).hex;
                             console.log( 'here is your withdraw tx:' );
                             console.log( txhex );
+                            utxos_to_remove.forEach( removable_coin => delete statechainjs.state[ state_id ][ "utxos" ][ removable_coin ] );
+                            coins_to_remove.forEach( removable_coin => delete statechainjs.state[ state_id ][ "statecoins" ][ removable_coin ] );
                             statechainjs_client.bl_tx_inputs = [];
                             statechainjs_client.bl_tx_outputs = [];
                         }
@@ -1894,7 +1878,62 @@
                     await super_nostr.waitSomeSeconds( 1 );
                     statechainjs_client.showBLTxPrep();
                 },
+                showSCTxPrep: async () => {
+                    $( '.sc_tx_prep_box .inputs' ).innerHTML = '';
+                    var amnt_available = 0;
+                    statechainjs_client.sc_tx_inputs.forEach( coin => {
+                        amnt_available = amnt_available + coin[ "amnt" ];
+                        var amnt = coin[ "amnt" ].toLocaleString();
+                        if ( amnt.split( "," ).length === 1 ) amnt = amnt + " sats";
+                        if ( amnt.split( "," ).length === 2 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + "K sats";
+                        if ( amnt.split( "," ).length === 3 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + "M sats";
+                        if ( amnt.includes( "M" ) && amnt.length === 7 ) amnt = "0.0" + amnt.substring( 0, amnt.indexOf( "M" ) ) + "₿";
+                        if ( amnt.includes( "M" ) && amnt.length === 8 ) amnt = "0." + amnt.substring( 0, amnt.indexOf( "M" ) ) + "₿";
+                        if ( amnt.includes( "M" ) && amnt.length === 9 ) amnt = amnt.substring( 0, 1 ) + "." + amnt.substring( 1, amnt.indexOf( "M" ) - 1 ) + "₿";
+                        if ( amnt.split( "," ).length === 4 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + amnt.substring( amnt.indexOf( "," ) + 1, amnt.indexOf( "," ) + 2 ) + "." + amnt.substring( amnt.indexOf( "," ) + 2, amnt.indexOf( "," ) + 3 ) + "₿";
+                        if ( amnt.includes( ".," ) || amnt.includes( ",." ) ) amnt = amnt.replace( ",", "" );
+                        var fake_utxo_html = `
+                            <div class="utxo_box">
+                                <div class="utxo fake">
+                                    <div class="coinpic">SC</div>
+                                    <div class="utxo_amnt"></div>
+                                </div>
+                                <div class="utxo_label"></div>
+                            </div>
+                        `;
+                        var div = document.createElement( "div" );
+                        div.innerHTML = fake_utxo_html;
+                        div.getElementsByClassName( "utxo" )[ 0 ].setAttribute( "data-coin_id", coin[ "coin_id" ] );
+                        div.getElementsByClassName( "utxo_amnt" )[ 0 ].innerText = amnt;
+                        var label = statechainjs.state[ coin[ "state_id" ] ].statecoins[ coin[ "coin_id" ] ].label;
+                        if ( !label ) label = "[unlabeled]";
+                        div.getElementsByClassName( "utxo_label" )[ 0 ].innerText = label;
+                        div.getElementsByClassName( "utxo_label" )[ 0 ].setAttribute( "data-utxo_id", coin[ "utxo_id" ] );
+                        $( '.sc_tx_prep_box .inputs' ).append( div.firstElementChild );
+                    });
+
+                    document.getElementsByClassName( "sc_tx_prep_box" )[ 0 ].getElementsByClassName( "submit_tx" )[ 0 ].onclick = async () => {
+                        var coins = JSON.parse( JSON.stringify( statechainjs_client.sc_tx_inputs ) );
+                        var wrapped = [];
+                        var i; for ( i=0; i<coins.length; i++ ) {
+                            var fake_coin = coins[ i ];
+                            var coin = statechainjs.state[ fake_coin[ "state_id" ] ].statecoins[ fake_coin[ "coin_id" ] ];
+                            var skiplog = true;
+                            wrapped = await statechainjs.sendCoin( coin, wrapped, skiplog );
+                        }
+                        console.log( `send this message to your recipient:` );
+                        console.log( JSON.stringify( wrapped ) );
+                        statechainjs_client.sc_tx_inputs = [];
+                    }
+
+                    if ( statechainjs_client.sc_tx_inputs.length ) $( '.sc_tx_prep_box' ).classList.remove( "hidden" );
+                    else $( '.sc_tx_prep_box' ).classList.add( "hidden" );
+                    $( '.sc_tx_prep_box .amount_available' ).innerText = amnt_available.toLocaleString() + " sats";
+                    await super_nostr.waitSomeSeconds( 1 );
+                    statechainjs_client.showSCTxPrep();
+                },
                 addUtxoToTx: coin => statechainjs_client.bl_tx_inputs.push( JSON.parse( JSON.stringify( coin ) ) ),
+                addCoinToTx: coin => statechainjs_client.sc_tx_inputs.push( JSON.parse( JSON.stringify( coin ) ) ),
             }
         </script>
         <script>
@@ -1903,6 +1942,8 @@
                 if ( $_GET[ "operator" ] !== "true" ) {
                     statechainjs_client.populateCoinboxes();
                     statechainjs_client.showBLTxPrep();
+                    // statechainjs_client.showCoopTxPrep();
+                    statechainjs_client.showSCTxPrep();
                 } else {
                     $( '.user_page' ).classList.add( "hidden" );
                     if ( !Object.keys( statechainjs.state ).length ) var nprofile = await statechainjs_client.makeOperator();
@@ -1914,7 +1955,6 @@
                         <h2>Your nprofile is:</h2>
                         <p>${nprofile}</p>
                     `;
-
                 }
                 if ( localStorage.state ) statechainjs.state = JSON.parse( localStorage.state );
                 statechainjs_client.constantlyBackup();
