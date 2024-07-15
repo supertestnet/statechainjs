@@ -610,8 +610,7 @@
                     // For each utxo, get sigs that send the utxo to the
                     // depositor after 2016 blocks
                     var current_blockheight = await statechainjs.getBlockheight();
-                    //TODO: change timelock to 2016
-                    var timelock = 20;
+                    var timelock = 2016;
                     var locktime = current_blockheight + timelock;
                     console.log( `when you can withdraw:`, locktime );
                     var address = statechainjs.state[ state_id ][ "address" ];
