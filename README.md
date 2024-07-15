@@ -12,7 +12,7 @@ Mercury implementation
 
 - MuSig
 - Absolute Timelocks: these limit the amount of time you can hold a statechain utxo before you must submit (and pay for) its backup transaction on the base layer. The user is responsible for doing so at the correct time, and applications can do this automatically.
-- HSM (Hardware Security Module) is used to semi-prove key deletion.
+- Key handling: the operator uses an HSM (Hardware Security Module) to semi-prove key deletion.
 - Lightning network interoperability
 
 StatechainJS implementation
