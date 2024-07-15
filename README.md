@@ -11,7 +11,7 @@ Initial statechains idea
 Mercury implementation
 
 - MuSig
-- Absolute Timelocks: The decrementing timelock backup mechanism limits the number of transfers that can be made within the lock-out time. The user is responsible for submitting backup transactions to the Bitcoin network at the correct time, and applications can do this automatically.
+- Absolute Timelocks: these limit the amount of time you can hold a statechain utxo before you must submit (and pay for) its backup transaction on the base layer. The user is responsible for doing so at the correct time, and applications can do this automatically.
 - HSM for Key Deletion: Utilizes a Hardware Security Module (HSM) to semi-prove key deletion.
 - Lightning Network Interoperability
 
