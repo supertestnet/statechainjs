@@ -8,7 +8,7 @@ Initial statechains idea
 - Federated Model
 - Adaptor Signatures
 
-Mercury Layer
+Mercury implementation
 
 - MuSig
 - Absolute Timelocks: The decrementing timelock backup mechanism limits the number of transfers that can be made within the lock-out time. The user is responsible for submitting backup transactions to the Bitcoin network at the correct time, and applications can do this automatically.
