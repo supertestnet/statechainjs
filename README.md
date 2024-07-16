@@ -4,7 +4,7 @@ A vanilla javascript implementation of a statechain client and an operator
 # How statechains work in three bulletpoints
 
 - instead of creating bitcoin transactions, pass around the private key to a bitcoin utxo
-- a partially-trusted operator holds a second key to the utxo and only "talks to" the latest holder
+- a partially-trusted operator prevents "doublespending" by holding a second key to the utxo and only "talking to" the latest holder
 - the latest holder can withdraw even if the operator shuts down due to "decrementing timelocks" (explained below)
 
 # How statechains work in two paragraphs
