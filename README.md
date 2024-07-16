@@ -24,7 +24,7 @@ Also, the first thing you do when you create or receive a statecoin is create a 
 
 StatechainJS implementation
 
-- Regular multisig
+- There is 1 operator and the bitcoins are held in a regular 2 of 2 multisig address
 - Key handling: the operator temporarily stores his private key in a variable called `recovered_privkey` and overwrites it with `null` after signing the user's transaction. Note that this may leave the private key in RAM until overwritten by new data.
 - Absolute timelocks: just like Mercury, statechainjs uses absolute timelocks, though adding support for relative timelocks is on the "to do" list
 - No lightning integration
