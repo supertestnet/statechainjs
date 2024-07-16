@@ -7,7 +7,7 @@ A user with "normal bitcoin" deposits it into a multisig bitcoin address (2 of 2
 
 Also, the first thing you do when you create or receive a statecoin is create a "withdrawal transaction" and get the operator to cosign it. You do not consider a utxo transfer complete until you have this withdrawal transaction. This allows you to keep your money (minus a transaction fee) even if the operator shuts down, which is an advantage over something like ecash, where, if the mint shuts down, he takes every user's money with him. To prevent a prior holder from broadcasting their own withdrawal transaction first, we use decrementing timelocks: the first holder has to wait 2016 blocks to withdraw, the second holder 2013 blocks, the third holder 2010 blocks, etc. This means the latest holder can always withdraw first, but it also means statechain utxos "expire" and turn back into "regular bitcoins" eventually -- and it also means the latest holder must be online (or use a watchtower) when his timelock expires, otherwise, a few blocks later, a prior holder can sweep the bitcoins from the multisig.
 
-# Different implementations & specs
+# Implementations & specs
 
 [Mercury implementation](https://docs.mercurylayer.com/)
 
