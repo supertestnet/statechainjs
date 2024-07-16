@@ -12,7 +12,7 @@ Also, the first thing you do when you create or receive a statecoin is create a 
 [Mercury implementation](https://docs.mercurylayer.com/)
 
 - There is 1 operator and the bitcoins are held in a single musig key with two "keyshards" -- the operator's and the depositor's
-- Absolute timelocks: these limit the amount of time you can hold a statechain utxo before you must submit (and pay for) its backup transaction on the base layer. The user is responsible for doing so at the correct time, and applications can do this automatically.
+- Absolute timelocks: these limit the amount of time you can hold a statechain utxo before you must withdraw on the base layer. The user is responsible for doing so at the correct time, and applications can do this automatically.
 - Key handling: the operator uses an HSM (Hardware Security Module) to semi-prove key deletion.
 - Lightning network interoperability
 
