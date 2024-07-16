@@ -523,9 +523,6 @@
                     var original_amnt = amnt;
                     //subtract enough for a fee to pay for this transaction
                     amnt = amnt - 500;
-                    //subtract enough to pay for future withdrawal fees
-                    //I am disabling this to test whether it's better without it
-                    // amnt = amnt - 2000;
 
                     // subtract the modulus from my amount so that it is a multiple
                     // of 330 and then find out what multiple of 330 it is
@@ -598,13 +595,6 @@
                         });
                     });
 
-                    // Add an extra output for paying for future fees
-                    // I am disabling this to test whether it's better without it
-                    // funding_txdata.vout.push({
-                    //     value: 2000,
-                    //     scriptPubKey: tapscript.Address.toScriptPubKey( utxo[ "address" ] ),
-                    // });
-
                     var funding_txid = tapscript.Tx.util.getTxid( funding_txdata );
 
                     // For each utxo, get sigs that send the utxo to the
@@ -663,21 +653,16 @@
                     var txhex = tapscript.Tx.encode( funding_txdata ).hex;
                     console.log( 'here is your funding tx:' );
                     console.log( txhex );
+                    var div = document.createElement( "div" );
+                    div.innerHTML = `
+                        <div>
+                            <p>Broadcast this txhex at mutinynet.com/tx/push</p>
+                            <p>${txhex}</p>
+                        </div>
+                    `;
+                    showModal( div.firstElementChild );
                     //remove funding utxo
                     delete statechainjs.state[ state_id ][ "utxos" ][ utxo_id ];
-                    // add change utxo
-                    // I am disabling this to test whether it's better without it
-                    // var utxo_id = statechainjs.getPrivkey().substring( 0, 32 );
-                    // statechainjs.state[ state_id ][ "utxos" ][ utxo_id ] = {
-                    //     state_id,
-                    //     type: "utxo",
-                    //     utxo_id,
-                    //     txid: funding_txid,
-                    //     vout: funding_txdata.vout.length - 1,
-                    //     amnt: 2000,
-                    //     address: utxo[ "address" ],
-                    //     btc_privkey: utxo[ "btc_privkey" ],
-                    // }
                 },
                 makeOperator: () => {
                     var privkey = statechainjs.getPrivkey();
@@ -1063,16 +1048,54 @@
                         console.log( `when you can withdraw:`, coin[ "locktime" ] - decrement_interval );
                     }
                 },
-                depositToWallet: state_id => {
+                depositToWallet: async state_id => {
                     if ( !Object.keys( statechainjs.state ).length ) return alert( `run makeUser() first` );
                     if ( !( state_id in statechainjs.state ) ) return alert( `run makeUser() first` );
                     var btc_privkey = statechainjs.getPrivkey();
                     var btc_pubkey = statechainjs.getPubkey( btc_privkey );
                     var address = tapscript.Address.fromScriptPubKey( [ 1, btc_pubkey ], statechainjs.network );
                     console.log( address );
-                    var txid = prompt( `Enter the txid of your funding tx` );
-                    var vout = Number( prompt( `and the vout` ) );
-                    var amnt = Number( prompt( `and the amount` ) );
+                    if ( statechainjs_client ) {
+                        setTimeout( ()=>{
+                            $( ".black-bg" ).classList.remove( "hidden" );
+                            $( ".modal" ).classList.remove( "hidden" );
+                        }, 10 );
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div>
+                                <p>Send money to this bitcoin address</p>
+                                <p>${address}</p>
+                                <p>Enter the txid of the funding transaction</p>
+                                <p><input class="funding_txid"></p>
+                                <p>And the vout that added money to the address above</p>
+                                <p><input class="funding_vout"></p>
+                                <p>Enter the amount you sent</p>
+                                <p><input class="funding_amnt"></p>
+                                <p><button class="submit_funding_info">Submit</button></p>
+                            </div>
+                        `;
+                        div.getElementsByClassName( "submit_funding_info" )[ 0 ].onclick = () => {
+                            var txid = $( '.funding_txid' ).value;
+                            var vout = $( '.funding_vout' ).value;
+                            var amnt = $( '.funding_amnt' ).value;
+                            sessionStorage[ "funding_info" ] = JSON.stringify( [txid, vout, amnt] );
+                            sessionStorage[ "modal_cleared" ] = true;
+                            modalVanish();
+                        }
+                        sessionStorage.removeItem( "modal_cleared" );
+                        sessionStorage.removeItem( "funding_info" );
+                        var block_til_clear = true;
+                        showModal( div.firstElementChild, block_til_clear );
+                        await getNote( "modal_cleared" );
+                        var funding_info = await getNote( "funding_info" );
+                        var [ txid, vout, amnt ] = JSON.parse( funding_info );
+                        vout = Number( vout );
+                        amnt = Number( amnt );
+                    } else {
+                        var txid = prompt( `Enter the txid of your funding tx` );
+                        var vout = Number( prompt( `and the vout` ) );
+                        var amnt = Number( prompt( `and the amount` ) );
+                    }
                     var utxo_id = statechainjs.getPrivkey().substring( 0, 32 );
                     statechainjs.state[ state_id ][ "utxos" ][ utxo_id ] = {
                         state_id,
@@ -1216,6 +1239,14 @@
                     var txhex = tapscript.Tx.encode( withdraw_txdata ).hex;
                     console.log( 'here is your withdraw tx:' );
                     console.log( txhex );
+                    var div = document.createElement( "div" );
+                    div.innerHTML = `
+                        <div>
+                            <p>Broadcast this txhex at mutinynet.com/tx/push</p>
+                            <p>${txhex}</p>
+                        </div>
+                    `;
+                    showModal( div.firstElementChild );
                     var txid = tapscript.Tx.util.getTxid( withdraw_txdata );
                     //add the statechain utxos & change to your list of utxos
                     vout.forEach( ( item, index ) => {
@@ -1863,6 +1894,14 @@
                             var txhex = tapscript.Tx.encode( withdraw_txdata ).hex;
                             console.log( 'here is your withdraw tx:' );
                             console.log( txhex );
+                            var div = document.createElement( "div" );
+                            div.innerHTML = `
+                                <div>
+                                    <p>Broadcast this txhex at mutinynet.com/tx/push</p>
+                                    <p>${txhex}</p>
+                                </div>
+                            `;
+                            showModal( div.firstElementChild );
                             utxos_to_remove.forEach( removable_coin => delete statechainjs.state[ state_id ][ "utxos" ][ removable_coin ] );
                             coins_to_remove.forEach( removable_coin => delete statechainjs.state[ state_id ][ "statecoins" ][ removable_coin ] );
                             statechainjs_client.bl_tx_inputs = [];
@@ -1922,6 +1961,14 @@
                         }
                         console.log( `send this message to your recipient:` );
                         console.log( JSON.stringify( wrapped ) );
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div>
+                                <p>Send this message to your recipient</p>
+                                <p>${JSON.stringify( wrapped )}</p>
+                            </div>
+                        `;
+                        showModal( div.firstElementChild );
                         statechainjs_client.sc_tx_inputs = [];
                     }
 
