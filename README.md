@@ -13,7 +13,7 @@ Also, the first thing you do when you create or receive a statecoin is create a 
 
 - There is 1 operator and the bitcoins are held in a single musig key with two "keyshards" -- the operator's and the depositor's
 - Absolute timelocks: these limit the amount of time you can hold a statechain utxo before you must withdraw on the base layer. The user is responsible for doing so at the correct time, and applications can do this automatically.
-- Key handling: the operator uses an HSM (Hardware Security Module) to semi-prove key deletion.
+- Key handling: the operator uses an HSM (Hardware Security Module) to semi-prove key deletion after cosigning each new holder's withdrawal transaction and only keep partial recovery data. He gives the latest holder the rest of his recovery data and that user he is expected to "pass it back" to the operator in the future if he wants him to "recover" his private key and sign a new transaction. But this recovery data is one-time-use (it changes every time) so a prior holder cannot get the operator to sign a new transaction -- only the latest holder can do this.
 - Lightning network interoperability
 
 [Initial statechains idea](https://medium.com/@RubenSomsen/statechains-non-custodial-off-chain-bitcoin-transfer-1ae4845a4a39)
@@ -25,6 +25,6 @@ Also, the first thing you do when you create or receive a statecoin is create a 
 StatechainJS implementation
 
 - There is 1 operator and the bitcoins are held in a regular 2 of 2 multisig address
-- Key handling: the operator temporarily stores his private key in a variable called `recovered_privkey` and overwrites it with `null` after signing the user's transaction. Note that this may leave the private key in RAM until overwritten by new data.
+- Key handling: like Mercury, the operator deletes his private key after every transfer and only stores partial recovery data, giving the rest to the latest holder. Unlike mercury, an HSM is not used. Instead, the operator temporarily stores his private key in a variable called `recovered_privkey` and overwrites it with `null` after signing the user's transaction. Note that this may leave the private key in RAM until overwritten by new data.
 - Absolute timelocks: just like Mercury, statechainjs uses absolute timelocks, though adding support for relative timelocks is on the "to do" list
 - No lightning integration
