@@ -541,10 +541,35 @@
                     var decomposed = await getNote( "modal_cleared" );
                     decomposed = JSON.parse( decomposed );
 
+                    if ( statechainjs_client ) {
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div class="progress">
+                                <h2>Progress bar <span id="goal" style="font-size: .8em; font-weight: normal;"></span></h2>
+                                <p>Note that it often takes up to 30 seconds for the progress bar to move</p>
+                                <p>You are <span class="num_so_far">loading...</span>/<span class="num_needed">loading...</span>th of the way done</p>
+                                <p class="few_more hidden">Give it a few more seconds to wrap up...</p>
+                                <div class="progressOutline" style="height: 2em; border: 1px solid grey; border-radius: 25px; overflow: hidden;">
+                                    <div class="progressBar" style="height: 2em; background-color: #61eb34; width: 0%; transition: width 1s;">
+                                    </div>
+                                </div>
+                                <div class="status"></div>
+                            </div>
+                        `;
+                        showModal( div.firstElementChild );
+                    }
+
                     // Step 3. For each utxo you intend to create,
                     // make a new pubkey and get one from the operator
                     var multisigs = [];
                     var i; for ( i=0; i<decomposed.length; i++ ) {
+                        if ( statechainjs_client ) {
+                            var percent = Math.floor( ( ( i + 1 ) / ( decomposed.length * 2 ) ) * 100 );
+                            $( '.progressBar' ).style.width = percent + "%";
+                            $( '.num_so_far' ).innerText = String( i + 1 );
+                            $( '.num_needed' ).innerText = String( decomposed.length * 2 );
+                            if ( ( i + 1 ) === ( decomposed.length * 2 ) ) $( '.few_more' ).classList.remove( "hidden" );
+                        }
                         var amnt = decomposed[ i ];
                         // Make a new pubkey
                         var multisig_privkey = statechainjs.getPrivkey();
@@ -645,7 +670,8 @@
                             script: multisigs[ i ][ "script" ],
                             label: "",
                         }
-                        await statechainjs.receiveCoins( [coin] );
+                        var num_of_statuses = decomposed.length * 2;
+                        await statechainjs.receiveCoins( [coin], decomposed.length + 1 + i, num_of_statuses );
                     }
 
                     var sig = tapscript.Signer.taproot.sign( utxo[ "btc_privkey" ], funding_txdata, 0 );
@@ -820,7 +846,14 @@
                     if ( !skiplog ) console.log( JSON.stringify( coins ) );
                     return coins;
                 },
-                receiveCoins: async coins => {
+                receiveCoins: async ( coins, status_index, num_of_statuses ) => {
+                    if ( statechainjs_client && status_index && num_of_statuses ) {
+                        var percent = Math.floor( ( status_index / num_of_statuses ) * 100 );
+                        $( '.progressBar' ).style.width = percent + "%";
+                        $( '.num_so_far' ).innerText = String( status_index );
+                        $( '.num_needed' ).innerText = String( num_of_statuses );
+                        if ( ( status_index ) === ( num_of_statuses ) ) $( '.few_more' ).classList.remove( "hidden" );
+                    }
                     if ( Object.keys( statechainjs.state ).length ) {
                         var state_id = Object.keys( statechainjs.state )[ 0 ];
                     } else {
@@ -831,7 +864,34 @@
                         }
                     }
                     if ( !coins ) coins = JSON.parse( prompt( `enter the string the sender gave you` ) );
+                    if ( statechainjs_client && !status_index && !num_of_statuses ) {
+                        await super_nostr.waitSomeSeconds( 1 );
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div class="progress">
+                                <h2>Progress bar <span id="goal" style="font-size: .8em; font-weight: normal;"></span></h2>
+                                <p>Note that it often takes up to 30 seconds for the progress bar to move</p>
+                                <p>You are <span class="num_so_far">loading...</span>/<span class="num_needed">loading...</span>th of the way done</p>
+                                <p class="few_more hidden">Give it a few more seconds to wrap up...</p>
+                                <div class="progressOutline" style="height: 2em; border: 1px solid grey; border-radius: 25px; overflow: hidden;">
+                                    <div class="progressBar" style="height: 2em; background-color: #61eb34; width: 0%; transition: width 1s;">
+                                    </div>
+                                </div>
+                                <div class="status"></div>
+                            </div>
+                        `;
+                        showModal( div.firstElementChild );
+                    }
                     var j; for ( j=0; j<coins.length; j++ ) {
+                        if ( statechainjs_client && !status_index && !num_of_statuses ) {
+                            var status_index_2 = j + 1;
+                            var num_of_statuses_2 = coins.length;
+                            var percent = Math.floor( ( status_index_2 / num_of_statuses_2 ) * 100 );
+                            $( '.progressBar' ).style.width = percent + "%";
+                            $( '.num_so_far' ).innerText = String( status_index_2 );
+                            $( '.num_needed' ).innerText = String( num_of_statuses_2 );
+                            if ( status_index_2 === num_of_statuses_2 ) $( '.few_more' ).classList.remove( "hidden" );
+                        }
                         var coin = coins[ j ];
                         var address = statechainjs.state[ state_id ][ "address" ];
                         var amnt = coin[ "amnt" ];
@@ -1046,6 +1106,10 @@
                             label: "",
                         }
                         console.log( `when you can withdraw:`, coin[ "locktime" ] - decrement_interval );
+                    }
+                    if ( statechainjs_client && status_index === num_of_statuses ) {
+                        await super_nostr.waitSomeSeconds( 2 );
+                        modalVanish();
                     }
                 },
                 depositToWallet: async state_id => {
