@@ -1,7 +1,7 @@
 # StatechainJS
 A vanilla javascript implementation of a statechain client and an operator
 
-Differences between Ruben's Initial [Statechains](https://medium.com/@RubenSomsen/statechains-non-custodial-off-chain-bitcoin-transfer-1ae4845a4a39) Idea, [Mercury Layer](https://docs.mercurylayer.com/), and Supertestnet's [Statechains JS Implementation](https://github.com/supertestnet/statechainjs)
+Differences between Ruben's Initial [Statechains](https://medium.com/@RubenSomsen/statechains-non-custodial-off-chain-bitcoin-transfer-1ae4845a4a39) Idea, [Mercury Layer](https://docs.mercurylayer.com/), and Supertestnet's [StatechainJS Implementation](https://github.com/supertestnet/statechainjs)
 
 Initial statechains idea
 
