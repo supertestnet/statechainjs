@@ -575,16 +575,33 @@
                         var multisig_privkey = statechainjs.getPrivkey();
                         var multisig_pubkey = statechainjs.getPubkey( multisig_privkey );
                         var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( multisig_privkey, true );
+                        var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
                         var msg_for_operator = {
                             type: "new_coin",
                             msg: {
+                                msg_id,
                                 nprofile: operator,
                             }
                         }
+                        if ( statechainjs_client ) statechainjs_client[ "pending_events" ][ msg_id ] = [ msg_for_operator, Math.floor( Date.now() / 1000 ), state_id, operator ];
                         console.log( `send this message to the operator:` );
                         console.log( JSON.stringify( msg_for_operator ) );
-                        if ( statechainjs_client ) var operator_response = await statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
-                        else var operator_response = JSON.parse( prompt( `send the message in your console to the operator and enter their response -- basically, it should trigger them to run statechainjs.makeCoin()` ) );
+                        if ( statechainjs_client ) {
+                            var loop = async () => {
+                                console.log( 'still awaiting reply...' );
+                                var promise1 = super_nostr.waitSomeSeconds( 30 );
+                                var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
+                                var promises = [promise1, promise2];
+                                var answer = await Promise.any(promises);
+                                if ( !answer ) {
+                                    answer = await loop();
+                                }
+                                return answer;
+                            }
+                            var operator_response = await loop();
+                        } else {
+                            var operator_response = JSON.parse( prompt( `send the message in your console to the operator and enter their response -- basically, it should trigger them to run statechainjs.makeCoin()` ) );
+                        }
                         console.log( operator_response );
                         var a_value = operator_response[ "msg" ][ "a_value" ];
                         var parity_byte = operator_response[ "msg" ][ "parity_byte" ];
@@ -707,6 +724,15 @@
                 makeCoin: user_info => {
                     try {
                         if ( !user_info ) user_info = JSON.parse( prompt( `Enter the info sent by the user` ) );
+                        var msg_id = user_info[ "msg" ][ "msg_id" ];
+                        if ( statechainjs_client ) {
+                            if ( msg_id in statechainjs_client[ "pending_events" ] ) {
+                                var msg_for_user = statechainjs_client[ "pending_events" ][ msg_id ][ 0 ];
+                                console.log( `send this message to the user:` );
+                                console.log( JSON.stringify( msg_for_user ) );
+                                return msg_for_user;
+                            }
+                        }
                         var nprofile = user_info[ "msg" ][ "nprofile" ];
                         var coin_id = statechainjs.getPrivkey().substring( 0, 32 );
                         var loop = () => {
@@ -736,6 +762,7 @@
                                 coin_id,
                             }
                         }
+                        statechainjs_client[ "pending_events" ][ msg_id ] = [ msg_for_user, Math.floor( Date.now() / 1000 ) ];
                         a_value = null;
                         console.log( `send this message to the user:` );
                         console.log( JSON.stringify( msg_for_user ) );
@@ -745,6 +772,15 @@
                 transferCoin: async user_info => {
                     try {
                         if ( !user_info ) user_info = JSON.parse( prompt( `Enter the info sent by the user` ) );
+                        var msg_id = user_info[ "msg" ][ "msg_id" ];
+                        if ( statechainjs_client ) {
+                            if ( msg_id in statechainjs_client[ "pending_events" ] ) {
+                                var msg_for_user = statechainjs_client[ "pending_events" ][ msg_id ][ 0 ];
+                                console.log( `send this message to the user:` );
+                                console.log( JSON.stringify( msg_for_user ) );
+                                return msg_for_user;
+                            }
+                        }
                         var a_value = user_info[ "msg" ][ "a_value" ];
                         var nprofile = user_info[ "msg" ][ "nprofile" ];
                         var coin_id = user_info[ "msg" ][ "coin_id" ];
@@ -807,6 +843,7 @@
                                 parity_byte,
                             }
                         }
+                        statechainjs_client[ "pending_events" ][ msg_id ] = [ msg_for_user, Math.floor( Date.now() / 1000 ) ];
                         a_value = null;
                         console.log( `send this message to the user:` );
                         console.log( JSON.stringify( msg_for_user ) );
@@ -914,20 +951,37 @@
                         var target = tapscript.Tap.encodeScript( coin[ "script" ] );
                         var sighash = tapscript.Signer.taproot.hash( withdraw_txdata, 0, {extension: target, sigflag: 128 | 3} ).hex;
                         var withdraw_sighash = sighash;
+                        var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
                         var msg_for_operator = {
                             type: "transfer",
                             msg: {
+                                msg_id,
                                 nprofile: coin[ "operator" ],
                                 a_value: coin[ "a_value" ],
                                 sighash,
                                 coin_id: coin[ "coin_id" ],
                             }
                         }
+                        if ( statechainjs_client ) statechainjs_client[ "pending_events" ][ msg_id ] = [ msg_for_operator, Math.floor( Date.now() / 1000 ), state_id, operator ];
                         console.log( `send this message to the operator:` );
                         console.log( JSON.stringify( msg_for_operator ) );
                         var operator = coin[ "operator" ];
-                        if ( statechainjs_client ) var operator_response = await statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
-                        else var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                        if ( statechainjs_client ) {
+                            var loop = async () => {
+                                console.log( 'still awaiting reply...' );
+                                var promise1 = super_nostr.waitSomeSeconds( 30 );
+                                var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
+                                var promises = [promise1, promise2];
+                                var answer = await Promise.any(promises);
+                                if ( !answer ) {
+                                    answer = await loop();
+                                }
+                                return answer;
+                            }
+                            var operator_response = await loop();
+                        } else {
+                            var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                        }
                         var a_value = operator_response[ "msg" ][ "a_value" ];
                         var expected_parity_byte = operator_response[ "msg" ][ "parity_byte" ];
                         var real_parity_byte = coin[ "parity_byte" ];
@@ -1340,6 +1394,7 @@
             // https://bundle.run/bech32@2.0.0
             // super_nostr
             var statechainjs_client = {
+                pending_events: {},
                 handled_events: [],
                 bl_tx_inputs: [],
                 bl_tx_outputs: [],
@@ -1897,18 +1952,35 @@
                                     var operator = coin[ "operator" ];
                                     var state_id = coin[ "state_id" ];
                                     var keyshard_1 = coin[ "privkey" ];
+                                    var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
                                     var msg_for_operator = {
                                         type: "transfer",
                                         msg: {
+                                            msg_id,
                                             nprofile: operator,
                                             a_value: coin[ "a_value" ],
                                             coin_id: coin[ "coin_id" ],
                                         }
                                     }
+                                    if ( statechainjs_client ) statechainjs_client[ "pending_events" ][ msg_id ] = [ msg_for_operator, Math.floor( Date.now() / 1000 ), state_id, operator ];
                                     console.log( `send this message to the operator:` );
                                     console.log( JSON.stringify( msg_for_operator ) );
-                                    if ( statechainjs_client ) var operator_response = await statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
-                                    else var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                                    if ( statechainjs_client ) {
+                                        var loop = async () => {
+                                            console.log( 'still awaiting reply...' );
+                                            var promise1 = super_nostr.waitSomeSeconds( 30 );
+                                            var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
+                                            var promises = [promise1, promise2];
+                                            var answer = await Promise.any(promises);
+                                            if ( !answer ) {
+                                                answer = await loop();
+                                            }
+                                            return answer;
+                                        }
+                                        var operator_response = await loop();
+                                    } else {
+                                        var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                                    }
                                     var keyshard_2 = operator_response[ "msg" ][ "privkey" ];
                                     var full_privkey = statechainjs.add2Privkeys( keyshard_1, keyshard_2 );
                                     var script = coin[ "script" ];
