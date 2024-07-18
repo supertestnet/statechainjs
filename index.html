@@ -125,9 +125,12 @@
                 $( ".black-bg" ).classList.add( "hidden" );
                 $( ".modal" ).classList.add( "hidden" );
             }
-            function showModal( content, block_til_clear ) {
+            function showModal( content, block_til_clear, allow_x = true ) {
                 if ( block_til_clear ) var fn = `modalVanish();sessionStorage[ 'modal_cleared' ] = true;`; else var fn = `modalVanish();`;
                 var html = `<div class="x_modal" style="position: absolute;right: 1rem;top: 0.5rem;font-size: 2rem; cursor: pointer; color: black;" onclick="${fn}">&times;</div><div class="modal_content" style="overflow-y: auto; max-height: 80vh; margin-top: 1.5rem;"></div>`;
+                if ( !allow_x ) {
+                    html = `<div class="modal_content" style="overflow-y: auto; max-height: 80vh; margin-top: 1.5rem;"></div>`;
+                }
                 var div = document.createElement( "div" );
                 div.innerHTML = `<div>${html}</div>`;
                 div.getElementsByClassName( "modal_content" )[ 0 ].append( content );
@@ -261,7 +264,7 @@
             .operator_page {
                 word-wrap: break-word;
             }
-            .bl_tx_prep_box, .sc_tx_prep_box, .coop_tx_prep_box {
+            .bl_tx_prep_box, .sc_tx_prep_box {
                 border: 1px solid black;
                 border-radius: 1rem;
                 padding: 1rem;
@@ -311,6 +314,15 @@
             .fake .coinpic {
                 background-color: lightblue;
             }
+            .fake .red {
+                background-color: red;
+                font-weight: bold;
+                color: white;
+            }
+            .warning {
+                border: 2px solid red;
+                padding: 1rem;
+            }
             .add .coinpic {
                 border: 1px solid blue;
             }
@@ -336,17 +348,6 @@
         <h1>Welcome to Statechain JS</h1>
         <div class="user_page">
             <div class="bl_tx_prep_box hidden">
-                <h2>Tx preparation</h2>
-                <p>Amount available: <span class="amount_available"></span></p>
-                <p>Estimated fee needed: <span class="fee_needed"></span></p>
-                <p>Please remember to leave an amount available about the same as the estimated fee</p>
-                <h3>Inputs:</h3>
-                <div class="inputs"></div>
-                <h3>Outputs:</h3>
-                <div class="outputs"></div>
-                <div class="tx_submitter"></div>
-            </div>
-            <div class="coop_tx_prep_box hidden">
                 <h2>Tx preparation</h2>
                 <p>Amount available: <span class="amount_available"></span></p>
                 <p>Estimated fee needed: <span class="fee_needed"></span></p>
@@ -522,7 +523,8 @@
                     // Step 2. Decompose amount (units of 330)
                     var original_amnt = amnt;
                     //subtract enough for a fee to pay for this transaction
-                    amnt = amnt - 500;
+                    var txfee = 500;
+                    amnt = amnt - txfee;
 
                     // subtract the modulus from my amount so that it is a multiple
                     // of 330 and then find out what multiple of 330 it is
@@ -588,14 +590,10 @@
                         console.log( JSON.stringify( msg_for_operator ) );
                         if ( statechainjs_client ) {
                             var loop = async () => {
-                                console.log( 'still awaiting reply...' );
-                                var promise1 = super_nostr.waitSomeSeconds( 30 );
+                                var promise1 = statechainjs_client.awaitTimeout();
                                 var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
                                 var promises = [promise1, promise2];
                                 var answer = await Promise.any(promises);
-                                if ( !answer ) {
-                                    answer = await loop();
-                                }
                                 return answer;
                             }
                             var operator_response = await loop();
@@ -603,6 +601,10 @@
                             var operator_response = JSON.parse( prompt( `send the message in your console to the operator and enter their response -- basically, it should trigger them to run statechainjs.makeCoin()` ) );
                         }
                         console.log( operator_response );
+                        if ( operator_response === "time's up" ) {
+                            alert( 'aborting because operator is down' );
+                            continue;
+                        }
                         var a_value = operator_response[ "msg" ][ "a_value" ];
                         var parity_byte = operator_response[ "msg" ][ "parity_byte" ];
                         var operator_multisig_pubkey = operator_response[ "msg" ][ "pubkey" ];
@@ -968,19 +970,19 @@
                         var operator = coin[ "operator" ];
                         if ( statechainjs_client ) {
                             var loop = async () => {
-                                console.log( 'still awaiting reply...' );
-                                var promise1 = super_nostr.waitSomeSeconds( 30 );
+                                var promise1 = statechainjs_client.awaitTimeout();
                                 var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
                                 var promises = [promise1, promise2];
                                 var answer = await Promise.any(promises);
-                                if ( !answer ) {
-                                    answer = await loop();
-                                }
                                 return answer;
                             }
                             var operator_response = await loop();
                         } else {
                             var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                        }
+                        if ( operator_response === "time's up" ) {
+                            alert( 'aborting because operator is down' );
+                            continue;
                         }
                         var a_value = operator_response[ "msg" ][ "a_value" ];
                         var expected_parity_byte = operator_response[ "msg" ][ "parity_byte" ];
@@ -1158,6 +1160,7 @@
                             multisig: coin[ "multisig" ],
                             script: coin[ "script" ],
                             label: "",
+                            operator_up: true,
                         }
                         console.log( `when you can withdraw:`, coin[ "locktime" ] - decrement_interval );
                     }
@@ -1181,13 +1184,13 @@
                         var div = document.createElement( "div" );
                         div.innerHTML = `
                             <div>
-                                <p>Send money to this bitcoin address</p>
+                                <p>Send money to this bitcoin address -- I use this faucet: faucet.mutinynet.com</p>
                                 <p>${address}</p>
                                 <p>Enter the txid of the funding transaction</p>
                                 <p><input class="funding_txid"></p>
-                                <p>And the vout that added money to the address above</p>
+                                <p>And the vout that sent money to the address above</p>
                                 <p><input class="funding_vout"></p>
-                                <p>Enter the amount you sent</p>
+                                <p>Enter the amount of sats you sent</p>
                                 <p><input class="funding_amnt"></p>
                                 <p><button class="submit_funding_info">Submit</button></p>
                             </div>
@@ -1196,6 +1199,8 @@
                             var txid = $( '.funding_txid' ).value;
                             var vout = $( '.funding_vout' ).value;
                             var amnt = $( '.funding_amnt' ).value;
+                            if ( !Number( vout ) && Number( vout ) !== 0 ) return alert( `Invalid vout. If you don't know what a vout is, don't use this app, it probably won't work. A vout must be an integer greater than or equal to zero. Please try again` );
+                            if ( amnt.includes( "," ) || amnt.includes( "." ) || !Number( amnt ) ) return alert( `No periods or commas are allowed in the funding_amnt and it must be a non-zero value. Please try again` );
                             sessionStorage[ "funding_info" ] = JSON.stringify( [txid, vout, amnt] );
                             sessionStorage[ "modal_cleared" ] = true;
                             modalVanish();
@@ -1203,7 +1208,7 @@
                         sessionStorage.removeItem( "modal_cleared" );
                         sessionStorage.removeItem( "funding_info" );
                         var block_til_clear = true;
-                        showModal( div.firstElementChild, block_til_clear );
+                        showModal( div.firstElementChild, block_til_clear, false );
                         await getNote( "modal_cleared" );
                         var funding_info = await getNote( "funding_info" );
                         var [ txid, vout, amnt ] = JSON.parse( funding_info );
@@ -1242,14 +1247,14 @@
                     return array;
                 },
                 findFeeUtxo: state_id => {
-                    var threshold = 500;
+                    var fee_threshold = 500;
                     var utxo;
                     var utxos = Object.keys( statechainjs.state[ state_id ][ "utxos" ] );
                     utxos = statechainjs.shuffle( utxos );
                     var i; for ( i=0; i<utxos.length; i++ ) {
                         var utxo_to_test = statechainjs.state[ state_id ][ "utxos" ][ utxos[ i ] ];
                         var its_amount = utxo_to_test[ "amnt" ];
-                        if ( its_amount > 500 + 330 ) {
+                        if ( its_amount > fee_threshold + 330 ) {
                             utxo = utxo_to_test;
                             break;
                         }
@@ -1259,8 +1264,9 @@
                 unilaterallyWithdrawFromStatechain: async ( state_id, coin_ids ) => {
                     if ( !state_id ) state_id = Object.keys( statechainjs.state )[ 0 ];
                     var fee_utxo = statechainjs.findFeeUtxo( state_id );
+                    var fee_threshold = 500;
                     if ( !fee_utxo ) return alert( `you do not have enough funds on the base layer to withdraw your statecoins and pay the requisite fees. Add funds and try again` );
-                    if ( fee_utxo[ "amnt" ] < 830 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
+                    if ( fee_utxo[ "amnt" ] < fee_threshold + 330 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
                     if ( !coin_ids ) coin_ids = [ Object.keys( statechainjs.state[ state_id ][ "statecoins" ] )[ 0 ] ];
                     var address = statechainjs.state[ state_id ][ "address" ];
                     var locktimes = [];
@@ -1281,6 +1287,7 @@
                         var coin = coins[ id ];
                         //remove the statechain utxo from your list of statechain utxos
                         delete statechainjs.state[ state_id ][ "statecoins" ][ id ];
+                        var txfee = 500;
                         vin_with_extra_data.push({
                             txid: coin[ "funding_txid" ],
                             vout: coin[ "vout" ],
@@ -1324,7 +1331,7 @@
                     vout.sort( ( a, b ) => a[ "vout" ] - b[ "vout" ] );
                     vout.forEach( item => delete item[ "vout" ] );
                     vout.push({
-                        value: fee_utxo[ "amnt" ] - 500,
+                        value: fee_utxo[ "amnt" ] - txfee,
                         scriptPubKey: tapscript.Address.toScriptPubKey( address ),
                     });
                     var withdraw_txdata = tapscript.Tx.create({
@@ -1399,8 +1406,6 @@
                 bl_tx_inputs: [],
                 bl_tx_outputs: [],
                 sc_tx_inputs: [],
-                // coop_inputs: [],
-                // coop_outputs: [],
                 handleEvent: async ( state_id, event ) => {
                     var state = statechainjs.state[ state_id ];
                     try {
@@ -1534,7 +1539,12 @@
                             </div>
                         `;
                         div.getElementsByClassName( "import_statecoins" )[ 0 ].onclick = async () => {
-                            var coins = JSON.parse( prompt( `enter the long string` ) );
+                            try {
+                                var coins = JSON.parse( prompt( `enter the long string` ) );
+                            } catch( e ) {
+                                var coins = null;
+                            }
+                            if ( !coins ) return;
                             statechainjs.receiveCoins( coins );
                             modalVanish();
                         }
@@ -1553,7 +1563,12 @@
                             </div>
                         `;
                         div.getElementsByClassName( "import_statecoins" )[ 0 ].onclick = async () => {
-                            var coins = JSON.parse( prompt( `enter the long string` ) );
+                            try {
+                                var coins = JSON.parse( prompt( `enter the long string` ) );
+                            } catch( e ) {
+                                var coins = null;
+                            }
+                            if ( !coins ) return;
                             statechainjs.receiveCoins( coins );
                             modalVanish();
                         }
@@ -1634,10 +1649,15 @@
                         if ( amnt.includes( "M" ) && amnt.length === 9 ) amnt = amnt.substring( 0, 1 ) + "." + amnt.substring( 1, amnt.indexOf( "M" ) - 1 ) + "₿";
                         if ( amnt.split( "," ).length === 4 ) amnt = amnt.substring( 0, amnt.indexOf( "," ) ) + amnt.substring( amnt.indexOf( "," ) + 1, amnt.indexOf( "," ) + 2 ) + "." + amnt.substring( amnt.indexOf( "," ) + 2, amnt.indexOf( "," ) + 3 ) + "₿";
                         if ( amnt.includes( ".," ) || amnt.includes( ",." ) ) amnt = amnt.replace( ",", "" );
+                        var operator_up = coin[ "operator_up" ];
+                        var red_or_not = "";
+                        if ( !operator_up ) red_or_not = "red";
+                        var coinpic_content = "SC";
+                        if ( !operator_up ) coinpic_content = "!";
                         var fake_utxo_html = `
                             <div class="utxo_box">
                                 <div class="utxo fake">
-                                    <div class="coinpic">SC</div>
+                                    <div class="coinpic ${red_or_not}">${coinpic_content}</div>
                                     <div class="utxo_amnt"></div>
                                 </div>
                                 <div class="utxo_label"></div>
@@ -1685,6 +1705,7 @@
                         <div>
                             <p>Amount: ${coin[ "amnt" ].toLocaleString()} sats</p>
                     `;
+                    var operator_up = coin[ "operator_up" ];
                     if ( coin[ "type" ] === "utxo" ) {
                         html += `
                             <p><button class="put_on_statechain">Put on statechain</button></p>
@@ -1698,10 +1719,14 @@
                         `;
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
+                        if ( !operator_up ) html += `
+                            <p class="warning">This coin's operator is down! Withdraw unilaterally or you may lose your funds</p>
+                        `;
                         var existing_inputs = [];
                         statechainjs_client.sc_tx_inputs.forEach( item => existing_inputs.push( item[ "coin_id" ] ) );
                         var disabled = "";
                         if ( existing_inputs.includes( coin[ "coin_id" ] ) ) disabled = "disabled";
+                        if ( !operator_up ) disabled = "disabled";
                         html += `
                             <p><button class="send_statecoin" ${disabled}>Send coin</button></p>
                         `;
@@ -1709,6 +1734,7 @@
                         statechainjs_client.bl_tx_inputs.forEach( item => existing_inputs.push( item[ "coin_id" ] ) );
                         var disabled = "";
                         if ( existing_inputs.includes( coin[ "coin_id" ] ) ) disabled = "disabled";
+                        if ( !operator_up ) disabled = "disabled";
                         html += `
                             <p><button class="add_to_tx" ${disabled}>Add to withdrawal tx</button></p>
                         `;
@@ -1763,7 +1789,6 @@
                             window.scrollTo( 0, 1 );
                         }
                         div.getElementsByClassName( "add_to_tx" )[ 0 ].onclick = async () => {
-                            // statechainjs_client.addCoinToCoopTx( coin );
                             statechainjs_client.addUtxoToTx( coin );
                             modalVanish();
                             window.scrollTo( 0, 1 );
@@ -1864,15 +1889,22 @@
                         var div = document.createElement( "div" );
                         div.innerHTML = `
                             <div>
+                                <p>Amount available to send: <span class="inner_amnt_available"></span></p>
+                                <p>Estimated fee needed: <span class="inner_fee_needed"></span></p>
+                                <p>Please remember to leave an amount available about the same as the estimated fee</p>
                                 <p>Enter a bitcoin address to send money to</p>
                                 <p><input class="destino"></p>
                                 <p>Enter the amount of sats you want to send there</p>
-                                <p><input type="number" min="330" step="1" class="send_amnt"></p>
+                                <p><input type="number" min="330" step="1" class="send_amnt" value="330"></p>
                                 <p><button class="submit_output">Submit</button></p>
                             </div>
                         `;
+                        div.getElementsByClassName( "inner_amnt_available" )[ 0 ].innerText = amnt_available.toLocaleString() + " sats";
+                        div.getElementsByClassName( "inner_fee_needed" )[ 0 ].innerText = fee_needed.toLocaleString() + " sats";
                         div.getElementsByClassName( "submit_output" )[ 0 ].onclick = e => {
                             var value = Number( e.target.parentElement.parentElement.getElementsByClassName( "send_amnt" )[ 0 ].value );
+                            if ( String( value ).includes( "." ) ) return alert( `Commas and periods are not allowed in the amount box, and it cannot be empty or have a zero value. Try again` );
+                            if ( !value ) return alert( `Commas and periods are not allowed in the amount box, and it cannot be empty or have a zero value. Try again` );
                             var destino = e.target.parentElement.parentElement.getElementsByClassName( "destino" )[ 0 ].value;
                             statechainjs_client.bl_tx_outputs.push({
                                 value,
@@ -1891,6 +1923,9 @@
                         var div = document.createElement( "div" );
                         div.innerHTML = `
                             <div>
+                                <p>Amount available to send: <span class="inner_amnt_available"></span></p>
+                                <p>Estimated fee needed: <span class="inner_fee_needed"></span></p>
+                                <p>Please remember to leave an amount available about the same as the estimated fee</p>
                                 <p>Enter a bitcoin address to send money to</p>
                                 <p><input class="destino"></p>
                                 <p>Enter the amount you want to send there</p>
@@ -1898,8 +1933,12 @@
                                 <p><button class="submit_output">Submit</button></p>
                             </div>
                         `;
+                        div.getElementsByClassName( "inner_amnt_available" )[ 0 ].innerText = amnt_available.toLocaleString() + " sats";
+                        div.getElementsByClassName( "inner_fee_needed" )[ 0 ].innerText = fee_needed.toLocaleString() + " sats";
                         div.getElementsByClassName( "submit_output" )[ 0 ].onclick = e => {
                             var value = Number( e.target.parentElement.parentElement.getElementsByClassName( "send_amnt" )[ 0 ].value );
+                            if ( String( value ).includes( "." ) ) return alert( `Commas and periods are not allowed in the amount box, and it cannot be empty or have a zero value. Try again` );
+                            if ( !value ) return alert( `Commas and periods are not allowed in the amount box, and it cannot be empty or have a zero value. Try again` );
                             var destino = e.target.parentElement.parentElement.getElementsByClassName( "destino" )[ 0 ].value;
                             statechainjs_client.bl_tx_outputs.push({
                                 value,
@@ -1931,16 +1970,21 @@
                     }
                     var div = document.createElement( "div" );
                     div.innerHTML = `
-                        <p><button class="submit_tx" ${disabled_or_not}>Submit tx</button></p>
+                        <p><button class="submit_tx" ${disabled_or_not}>Submit tx</button> <button class="restart_tx">Restart tx</button></p>
                     `;
                     $( '.bl_tx_prep_box .tx_submitter' ).innerHTML = '';
                     $( '.bl_tx_prep_box .tx_submitter' ).append( div );
                     var fee_needed = 500;
+                    div.getElementsByClassName( "restart_tx" )[ 0 ].onclick = async () => {
+                        statechainjs_client.bl_tx_inputs = [];
+                        statechainjs_client.bl_tx_outputs = [];
+                        $( '.bl_tx_prep_box' ).classList.add( "hidden" );
+                    }
                     if ( statechainjs_client.bl_tx_inputs.length && statechainjs_client.bl_tx_outputs.length ) {
                         div.getElementsByClassName( "submit_tx" )[ 0 ].onclick = async () => {
                             var conf = true;
-                            if ( amnt_available < fee_needed ) var conf = confirm( `Your fee is below the expected fee needed! Are you sure you want to use this fee? It might bork everything` );
-                            if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) var conf = confirm( `Your fee is over 5% higher than the expected fee needed! Are you sure you want to use this fee?` );
+                            if ( amnt_available < fee_needed ) var conf = confirm( `Your fee is below the estimated fee needed! Are you sure you want to use this fee? It might bork everything` );
+                            if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) var conf = confirm( `Your fee is over 5% higher than the estimated fee needed! Are you sure you want to use this fee?` );
                             if ( !conf ) return;
                             var vin_with_extra_data = [];
                             var vout = JSON.parse( JSON.stringify( statechainjs_client.bl_tx_outputs ) );
@@ -1967,19 +2011,19 @@
                                     console.log( JSON.stringify( msg_for_operator ) );
                                     if ( statechainjs_client ) {
                                         var loop = async () => {
-                                            console.log( 'still awaiting reply...' );
-                                            var promise1 = super_nostr.waitSomeSeconds( 30 );
+                                            var promise1 = statechainjs_client.awaitTimeout();
                                             var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
                                             var promises = [promise1, promise2];
                                             var answer = await Promise.any(promises);
-                                            if ( !answer ) {
-                                                answer = await loop();
-                                            }
                                             return answer;
                                         }
                                         var operator_response = await loop();
                                     } else {
                                         var operator_response = JSON.parse( prompt( `send the message in your console to the operator -- basically, it should trigger them to run statechainjs.transferCoin()` ) );
+                                    }
+                                    if ( operator_response === "time's up" ) {
+                                        alert( 'aborting because operator is down' );
+                                        continue;
                                     }
                                     var keyshard_2 = operator_response[ "msg" ][ "privkey" ];
                                     var full_privkey = statechainjs.add2Privkeys( keyshard_1, keyshard_2 );
@@ -2114,6 +2158,49 @@
                     await super_nostr.waitSomeSeconds( 1 );
                     statechainjs_client.showSCTxPrep();
                 },
+                checkOnOperators: async () => {
+                    if ( !Object.keys( statechainjs.state ).length ) {
+                        await super_nostr.waitSomeSeconds( 10 );
+                        return statechainjs_client.checkOnOperators();
+                    }
+                    var state_id = Object.keys( statechainjs.state )[ 0 ];
+                    var coins = JSON.parse( JSON.stringify( statechainjs.state[ state_id ].statecoins ) );
+                    var i; for ( i=0; i<Object.keys( coins ).length; i++ ) {
+                        var coin_id = Object.keys( coins )[ i ];
+                        var coin = coins[ coin_id ];
+                        var operator = coin[ "operator" ];
+                        var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
+                        var msg_for_operator = {
+                            type: "new_coin",
+                            msg: {
+                                msg_id,
+                                nprofile: operator,
+                            }
+                        }
+                        statechainjs_client[ "pending_events" ][ msg_id ] = [ msg_for_operator, Math.floor( Date.now() / 1000 ), state_id, operator ];
+                        var loop = async () => {
+                            var promise1 = statechainjs_client.awaitTimeout();
+                            var promise2 = statechainjs_client.contactOperator( JSON.stringify( msg_for_operator ), operator, state_id );
+                            var promises = [promise1, promise2];
+                            var answer = await Promise.any(promises);
+                            return answer;
+                        }
+                        var operator_response = await loop();
+                        if ( operator_response === "time's up" ) {
+                            statechainjs.state[ state_id ].statecoins[ coin_id ][ "operator_up" ] = false;
+                        }
+                    }
+                    await super_nostr.waitSomeSeconds( 10 );
+                    return statechainjs_client.checkOnOperators();
+                },
+                awaitTimeout: async ( do_debug, waitnum = 10, limit = 30, num = 0, debug ) => {
+                    if ( num >= limit ) return "time's up";
+                    if ( do_debug ) console.log( 'still awaiting reply...', "currently waited:", num, "seconds left:", limit - num );
+                    num = num + waitnum;
+                    await super_nostr.waitSomeSeconds( waitnum );
+                    var reply = await statechainjs_client.awaitTimeout( do_debug, waitnum, limit, num );
+                    return reply;
+                },
                 addUtxoToTx: coin => statechainjs_client.bl_tx_inputs.push( JSON.parse( JSON.stringify( coin ) ) ),
                 addCoinToTx: coin => statechainjs_client.sc_tx_inputs.push( JSON.parse( JSON.stringify( coin ) ) ),
             }
@@ -2124,8 +2211,8 @@
                 if ( $_GET[ "operator" ] !== "true" ) {
                     statechainjs_client.populateCoinboxes();
                     statechainjs_client.showBLTxPrep();
-                    // statechainjs_client.showCoopTxPrep();
                     statechainjs_client.showSCTxPrep();
+                    statechainjs_client.checkOnOperators();
                 } else {
                     $( '.user_page' ).classList.add( "hidden" );
                     if ( !Object.keys( statechainjs.state ).length ) var nprofile = await statechainjs_client.makeOperator();
