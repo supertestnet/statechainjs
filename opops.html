@@ -195,8 +195,9 @@
         <script>
             var handled_events = {}
             var handleEvent = event => {
-                if ( Object.keys( handled_events ).includes( event.id ) ) return;
-                handled_events[ event.id ] = event;
+                var content = JSON.parse( event.content );
+                var nprofile = content.msg.nprofile;
+                handled_events[ nprofile ] = event;
             }
             if ( $_GET[ "confused" ] === "true" ) $( '.explainer' ).classList.remove( "hidden" );
         </script>
@@ -213,25 +214,20 @@
                 var events = await super_nostr.getEvents( relay, ids, kinds, until, since, limit, etags, ptags );
                 events.forEach( handleEvent );
                 if ( events.length ) $( '.loading' ).classList.add( "hidden" );
-                else $( '.loading' ).innerText = "None found";
-                var exists_list = [];
-                var n_exists_list = [];
-                $$( '.operator' ).forEach( item => exists_list.push( item.getAttribute( "data-event_id" ) ) );
-                $$( '.operator' ).forEach( item => n_exists_list.push( item.getAttribute( "data-nprofile" ) ) );
-                Object.keys( handled_events ).forEach( item => {
-                    if ( !exists_list.includes( item ) ) $( '.operator_list' ).innerHTML = '';
-                });
+                else {
+                    $( '.loading' ).innerText = "None found";
+                    $( '.loading' ).classList.remove( "hidden" );
+                }
                 var i; for ( i=0; i<Object.keys( handled_events ).length; i++ ) {
-                    await super_nostr.waitLittlerTime( 10 );
-                    var event_id = Object.keys( handled_events )[ i ];
-                    if ( exists_list.includes( event_id ) ) return;
-                    var event = handled_events[ event_id ];
-                    var content = JSON.parse( event.content );
-                    var nprofile = content.msg.nprofile;
-                    if ( n_exists_list.includes( nprofile ) ) return;
-                    n_exists_list.push( nprofile );
+                    var nprofile = Object.keys( handled_events )[ i ];
+                    var timestamp = handled_events[ nprofile ].created_at;
+                    if ( $( `[data-nprofile='${nprofile}']` ) ) {
+                        var element = $( `[data-nprofile='${nprofile}']` );
+                        if ( timestamp < Math.floor( Date.now() / 1000 ) - 600 ) delete handled_events[ nprofile ];
+                        return;
+                    }
+                    var event = handled_events[ nprofile ];
                     var p = document.createElement( "p" );
-                    p.setAttribute( "data-event_id", event_id );
                     p.setAttribute( "data-nprofile", nprofile );
                     p.classList.add( "operator" );
                     p.innerText = nprofile;
