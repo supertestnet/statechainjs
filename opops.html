@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, user-scalable=no">
+        <script src="https://bundle.run/browserify-cipher@1.0.1"></script>
+        <script src="https://bundle.run/noble-secp256k1@1.2.14"></script>
+        <script>
+            // dependencies:
+            // https://bundle.run/noble-secp256k1@1.2.14
+            // https://bundle.run/browserify-cipher@1.0.1
+            var super_nostr = {
+                hexToBytes: hex => Uint8Array.from( hex.match( /.{1,2}/g ).map( byte => parseInt( byte, 16 ) ) ),
+                bytesToHex: bytes => bytes.reduce( ( str, byte ) => str + byte.toString( 16 ).padStart( 2, "0" ), "" ),
+                base64ToHex: str => {
+                    var raw = atob( str );
+                    var result = '';
+                    var i; for ( i=0; i<raw.length; i++ ) {
+                        var hex = raw.charCodeAt( i ).toString( 16 );
+                        result += hex.length % 2 ? '0' + hex : hex;
+                    }
+                    return result.toLowerCase();
+                },
+                getPrivkey: () => super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ),
+                getPubkey: privkey => nobleSecp256k1.getPublicKey( privkey, true ).substring( 2 ),
+                sha256: async text_or_bytes => {if ( typeof text_or_bytes === "string" ) text_or_bytes = ( new TextEncoder().encode( text_or_bytes ) );return super_nostr.bytesToHex( await nobleSecp256k1.utils.sha256( text_or_bytes ) )},
+                waitSomeSeconds: num => {
+                    var num = num.toString() + "000";
+                    num = Number( num );
+                    return new Promise( resolve => setTimeout( resolve, num ) );
+                },
+                getEvents: async ( relay, ids, kinds, until, since, limit, etags, ptags ) => {
+                    var socket = new WebSocket( relay );
+                    var events = [];
+                    socket.addEventListener( 'message', async function( message ) {
+                        var [ type, subId, event ] = JSON.parse( message.data );
+                        var { kind, content } = event || {}
+                        if ( !event || event === true ) return;
+                        events.push( event );
+                    });
+                    socket.addEventListener( 'open', async function( e ) {
+                        var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
+                        var filter  = {}
+                        if ( ids ) filter.ids = ids;
+                        if ( kinds ) filter.kinds = kinds;
+                        if ( until ) filter.until = until;
+                        if ( since ) filter.since = since;
+                        if ( limit ) filter.limit = limit;
+                        if ( etags ) filter[ "#e" ] = etags;
+                        if ( ptags ) filter[ "#p" ] = ptags;
+                        var subscription = [ "REQ", subId, filter ];
+                        socket.send( JSON.stringify( subscription ) );
+                    });
+                    var loop = async () => {
+                        var len = events.length;
+                        await super_nostr.waitSomeSeconds( 1 );
+                        if ( len !== events.length ) return await loop();
+                        socket.close();
+                        return events;
+                    }
+                    return await loop();
+                },
+                prepEvent: async ( privkey, msg, kind, tags ) => {
+                    pubkey = super_nostr.getPubkey( privkey );
+                    if ( !tags ) tags = [];
+                    var event = {
+                        "content": msg,
+                        "created_at": Math.floor( Date.now() / 1000 ),
+                        "kind": kind,
+                        "tags": tags,
+                        "pubkey": pubkey,
+                    }
+                    var signedEvent = await super_nostr.getSignedEvent( event, privkey );
+                    return signedEvent;
+                },
+                sendEvent: ( event, relay ) => {
+                    var socket = new WebSocket( relay );
+                    socket.addEventListener( 'open', async () => {
+                        socket.send( JSON.stringify( [ "EVENT", event ] ) );
+                        setTimeout( () => {socket.close();}, 1000 );
+                    });
+                    return event.id;
+                },
+                getSignedEvent: async ( event, privkey ) => {
+                    var eventData = JSON.stringify([
+                        0,
+                        event['pubkey'],
+                        event['created_at'],
+                        event['kind'],
+                        event['tags'],
+                        event['content'],
+                    ]);
+                    event.id = await super_nostr.sha256( eventData );
+                    event.sig = await nobleSecp256k1.schnorr.sign( event.id, privkey );
+                    return event;
+                },
+                encrypt: ( privkey, pubkey, text ) => {
+                    var key = nobleSecp256k1.getSharedSecret( privkey, '02' + pubkey, true ).substring( 2 );
+                    var iv = window.crypto.getRandomValues( new Uint8Array( 16 ) );
+                    var cipher = browserifyCipher.createCipheriv( 'aes-256-cbc', super_nostr.hexToBytes( key ), iv );
+                    var encryptedMessage = cipher.update(text,"utf8","base64");
+                    emsg = encryptedMessage + cipher.final( "base64" );
+                    var uint8View = new Uint8Array( iv.buffer );
+                    var decoder = new TextDecoder();
+                    return emsg + "?iv=" + btoa( String.fromCharCode.apply( null, uint8View ) );
+                },
+                decrypt: ( privkey, pubkey, ciphertext ) => {
+                    var [ emsg, iv ] = ciphertext.split( "?iv=" );
+                    var key = nobleSecp256k1.getSharedSecret( privkey, '02' + pubkey, true ).substring( 2 );
+                    var decipher = browserifyCipher.createDecipheriv(
+                        'aes-256-cbc',
+                        super_nostr.hexToBytes( key ),
+                        super_nostr.hexToBytes( super_nostr.base64ToHex( iv ) )
+                    );
+                    var decryptedMessage = decipher.update( emsg, "base64" );
+                    dmsg = decryptedMessage + decipher.final( "utf8" );
+                    return dmsg;
+                },
+            }
+        </script>
+        <style>
+            * {
+                box-sizing: border-box;
+                font-size: 1.15rem;
+                font-family: Arial, sans-serif;
+            }
+            html {
+                max-width: 800px;
+                padding: 3rem 1rem;
+                margin: auto;
+                line-height: 1.25;
+                padding: 0;
+            }
+            body {
+                margin: 3rem 1rem;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+            h2 {
+                font-size: 1.5rem;
+            }
+            input {
+                line-height: 1.25;
+                width: 100%;
+                height: 1.8rem;
+                font-size: 1.15rem;
+                border: 1px solid grey;
+            }
+            .hidden {
+                display: none !important;
+            }
+            .explainer {
+                border: 2px solid black;
+                padding: 1rem;
+            }
+            .operator_list {
+                word-wrap: break-word;
+            }
+            @media screen and (max-width: 600px) {
+            }
+        </style>
+        <script>
+            var $ = document.querySelector.bind( document );
+            var $$ = document.querySelectorAll.bind( document );
+            var url_params = new URLSearchParams( window.location.search );
+            var url_keys = url_params.keys();
+            var $_GET = {}
+            for ( var key of url_keys ) $_GET[ key ] = url_params.get( key );
+        </script>
+    </head>
+    <body>
+        <h1>Welcome to OpOps</h1>
+        <div class="explainer hidden">
+            <p style="font-weight: bold;">Explainer for the  confused</p>
+            <p>Statechains allow users to rapidly and cheaply transfer real bitcoins between each other without relying on a network of payment channels. They prevent doublespending through a not-quite-fully-trusted third party called an operator. <a href="https://github.com/supertestnet/statechainjs?tab=readme-ov-file#statechainjs" target="_blank">Learn how they work here</a>. This page lists operators who are running statechain software and are ready to facilitate rapid/cheap bitcoin transfers.</p>
+            <p>Here's the big danger with statechains: <span style="font-weight: bold;">statechains aren't safe if the operator isn't trustworthy!</span> Even though the operator *theoretically* only has one key, which *should* mean they can't do anything bad, there are two scenarios where they might have *two* keys which is enough to steal your money: (1) Someone might send you a statechain utxo where *they themselves* are the operator. If so, they may have both keys and can steal from you. (2) Someone might send you a statechain utxo and *collude with* the operator. If so, they may have both keys and can steal from you. Statechain operators can do one other bad thing: if they go offline, you can still withdraw your money from a statechain utxo via a "unilateral withdrawal," but this costs more money and takes more time than doing a "cooperative withdrawal" while the operator is online.</p>
+            <p>Therefore, do not create a statechain utxo unless you are confident that the operator will *stay online* and *not collude with anyone* to pull the rug out from under future holders of your statechain utxo. And if someone *sends you* a statechain utxo and you aren't confident that the operator they used is trustworthy, *do not accept it!* Instead, ask reliable bitcoiners on social media which operators are good and trustworthy, do your own research, and then only use operators who *you* agree are trustworthy.</p>
+        </div>
+        <h2>List of statechain operators</h2>
+        <p class="loading">loading...</p>
+        <div class="operator_list"></div>
+        <script>
+            var handled_events = [];
+            var handleEvent = event => {
+                var content = JSON.parse( event.content );
+                if ( handled_events.includes( event.id ) ) return;
+                handled_events.push( event );
+                var p = document.createElement( "p" );
+                p.innerText = content.msg.nprofile;
+                $( '.operator_list' ).append( p );
+            }
+            if ( $_GET[ "confused" ] === "true" ) $( '.explainer' ).classList.remove( "hidden" );
+        </script>
+        <script>
+            (async()=>{
+                var relay = "wss://nostrue.com";
+                var ids = null;
+                var kinds = [ 56899 ];
+                var until = Math.floor( Date.now() / 1000 );
+                var since = until - 600;
+                var limit = null;
+                var etags = null;
+                var ptags = null;
+                var events = await super_nostr.getEvents( relay, ids, kinds, until, since, limit, etags, ptags );
+                events.forEach( handleEvent );
+                if ( events.length ) $( '.loading' ).classList.add( "hidden" );
+            })();
+        </script>
+    </body>
+</html>
