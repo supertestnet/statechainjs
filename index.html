@@ -140,6 +140,7 @@
                 $( ".modal" ).classList.remove( "hidden" );
             }
             sessionStorage.removeItem( "modal_cleared" );
+            sessionStorage.removeItem( "funding_info" );
             async function getNote( item ) {
                 async function isNoteSetYet( note_i_seek ) {
                     return new Promise( function( resolve, reject ) {
@@ -161,6 +162,11 @@
                 return returnable;
             }
             var continueMakingStatechainUtxos = ( amnt_available, num_of_boxes_to_make ) => {
+                var conf = true;
+                if ( Number( num_of_boxes_to_make ) > 5 && Number( num_of_boxes_to_make ) < 20 ) conf = confirm( `Warning: making this number of statechain utxos might take several minutes. Click ok if you are fine with this and are willing to wait, otherwise click cancel.` );
+                if ( Number( num_of_boxes_to_make ) >= 20 && Number( num_of_boxes_to_make ) < 60 ) conf = confirm( `Warning: making this number of statechain utxos might take 10 minutes or more. Click ok if you are fine with this and are willing to wait, otherwise click cancel.` );
+                if ( Number( num_of_boxes_to_make ) >= 60 ) conf = confirm( `Warning: making this number of statechain utxos might take over half an hour. Click ok if you are fine with this and are willing to wait, otherwise click cancel.` );
+                if ( !conf ) return;
                 var average = Math.floor( amnt_available / num_of_boxes_to_make );
                 var leftover = amnt_available - average * num_of_boxes_to_make;
                 var boxes = ``;
@@ -169,6 +175,7 @@
                 div.innerHTML = `
                     <div>
                         <p>Amount left over: <span class="leftover">${leftover}</span></p>
+                        <p>Please enter the amounts you want in each of your statechain utxos</p>
                         ${boxes}
                         <p><button onclick="if ( Number( $( '.leftover' ).innerText ) !== 0 ) return alert( 'you must use all your sats and have none left over, try again' ); modalVanish();var arr = [];$$( '.statechain_utxo_box' ).forEach( item => arr.push( Number( item.value ) ) );sessionStorage[ 'modal_cleared' ] = JSON.stringify( arr );">Submit</button></p>
                     </div>
@@ -517,7 +524,31 @@
                     var amnt = utxo[ "amnt" ];
 
                     // Step 1. Pick an operator
-                    var operator = prompt( `Enter the nprofile of an operator` );
+                    if ( statechainjs_client ) {
+                        var div = document.createElement( "div" );
+                        div.innerHTML = `
+                            <div>
+                                <p>Enter the nprofile of an operator</p>
+                                <p><input class="operator_to_use"></p>
+                                <p><button class="submit_operator">Submit</button></p>
+                                <p>Confused? <a href="./opops.html?confused=true" target="_blank">Click here</a></p>
+                            </div>
+                        `;
+                        div.getElementsByClassName( "submit_operator" )[ 0 ].onclick = () => {
+                            var operator_to_use = $( '.operator_to_use' ).value;
+                            sessionStorage[ "operator_to_use" ] = operator_to_use;
+                            sessionStorage[ "modal_cleared" ] = true;
+                            modalVanish();
+                        }
+                        sessionStorage.removeItem( "modal_cleared" );
+                        sessionStorage.removeItem( "operator_to_use" );
+                        var block_til_clear = true;
+                        showModal( div.firstElementChild, block_til_clear, false );
+                        await getNote( "modal_cleared" );
+                        var operator = await getNote( "operator_to_use" );
+                    } else {
+                        var operator = prompt( `Enter the nprofile of an operator` );
+                    }
                     var [ operator_pub, operator_relays ] = statechainjs.convertNEvent( operator );
 
                     // Step 2. Decompose amount (units of 330)
@@ -535,7 +566,7 @@
                     selector = selector += `</select>`;
 
                     sessionStorage.removeItem( "modal_cleared" );
-                    var content = `<p>With the amount you sent in, the maximum number of statechain utxos you can create is ${what_multiple}. How many do you want to create?</p>${selector}<p><button onclick="continueMakingStatechainUtxos( ${amnt}, $( '.selector' ).value );">Submit</button></p>`;
+                    var content = `<p>With the amount you sent in, the maximum number of statechain utxos you can create is ${what_multiple}. <span style="font-weight:bold;">Creating more than 5 is not recommended.</span> How many do you want to create?</p>${selector}<p><button onclick="continueMakingStatechainUtxos( ${amnt}, $( '.selector' ).value );">Submit</button></p>`;
                     var div = document.createElement( "div" );
                     div.innerHTML = `<div>${content}</div>`;
                     var block_til_clear = true;
@@ -1282,12 +1313,12 @@
                     if ( current_blockheight < locktime ) return alert( `you cannot unilaterally withdraw this set of coins til ${locktime - current_blockheight} more ${block_or_blocks} by` );
                     var vin_with_extra_data = [];
                     var vout = [];
+                    var txfee = 500;
                     coin_ids.forEach( ( id, index ) => {
                         var coins = JSON.parse( JSON.stringify( statechainjs.state[ state_id ][ "statecoins" ] ) );
-                        var coin = coins[ id ];
+                        var coin = JSON.parse( JSON.stringify( coins[ id ] ) );
                         //remove the statechain utxo from your list of statechain utxos
                         delete statechainjs.state[ state_id ][ "statecoins" ][ id ];
-                        var txfee = 500;
                         vin_with_extra_data.push({
                             txid: coin[ "funding_txid" ],
                             vout: coin[ "vout" ],
@@ -2158,6 +2189,21 @@
                     await super_nostr.waitSomeSeconds( 1 );
                     statechainjs_client.showSCTxPrep();
                 },
+                announceOperator: async state_id => {
+                    var state = statechainjs.state[ state_id ];
+                    //every ten minutes, make an event of kind
+                    //56899 to announce yourself as an operator
+                    var msg = JSON.stringify({
+                        type: "announcement",
+                        msg: {
+                            nprofile: state_id,
+                        }
+                    });
+                    var new_event = await super_nostr.prepEvent( state[ "privkey" ], msg, 56899 );
+                    super_nostr.sendEvent( new_event, state[ "relay" ] );
+                    await super_nostr.waitSomeSeconds( 600 );
+                    statechainjs_client.announceOperator( state_id );
+                },
                 checkOnOperators: async () => {
                     if ( !Object.keys( statechainjs.state ).length ) {
                         await super_nostr.waitSomeSeconds( 10 );
@@ -2220,6 +2266,7 @@
                         var nprofile = Object.keys( statechainjs.state )[ 0 ];
                         statechainjs_client.listenLoop( nprofile );
                     }
+                    statechainjs_client.announceOperator( nprofile );
                     $( '.operator_page' ).innerHTML = `
                         <h2>Your nprofile is:</h2>
                         <p>${nprofile}</p>
