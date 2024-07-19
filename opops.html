@@ -29,6 +29,11 @@
                     num = Number( num );
                     return new Promise( resolve => setTimeout( resolve, num ) );
                 },
+                waitLittlerTime: num => {
+                    var num = num.toString();
+                    num = Number( num );
+                    return new Promise( resolve => setTimeout( resolve, num ) );
+                },
                 getEvents: async ( relay, ids, kinds, until, since, limit, etags, ptags ) => {
                     var socket = new WebSocket( relay );
                     var events = [];
@@ -210,20 +215,28 @@
                 if ( events.length ) $( '.loading' ).classList.add( "hidden" );
                 else $( '.loading' ).innerText = "None found";
                 var exists_list = [];
+                var n_exists_list = [];
                 $$( '.operator' ).forEach( item => exists_list.push( item.getAttribute( "data-event_id" ) ) );
+                $$( '.operator' ).forEach( item => n_exists_list.push( item.getAttribute( "data-nprofile" ) ) );
                 Object.keys( handled_events ).forEach( item => {
                     if ( !exists_list.includes( item ) ) $( '.operator_list' ).innerHTML = '';
                 });
-                Object.keys( handled_events ).forEach( event_id => {
+                var i; for ( i=0; i<Object.keys( handled_events ).length; i++ ) {
+                    await super_nostr.waitLittlerTime( 10 );
+                    var event_id = Object.keys( handled_events )[ i ];
                     if ( exists_list.includes( event_id ) ) return;
                     var event = handled_events[ event_id ];
                     var content = JSON.parse( event.content );
+                    var nprofile = content.msg.nprofile;
+                    if ( n_exists_list.includes( nprofile ) ) return;
+                    n_exists_list.push( nprofile );
                     var p = document.createElement( "p" );
                     p.setAttribute( "data-event_id", event_id );
+                    p.setAttribute( "data-nprofile", nprofile );
                     p.classList.add( "operator" );
-                    p.innerText = content.msg.nprofile;
+                    p.innerText = nprofile;
                     $( '.operator_list' ).append( p );
-                });
+                }
             }
             var loop = async () => {
                 init();
