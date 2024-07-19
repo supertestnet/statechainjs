@@ -2234,6 +2234,8 @@
                         var operator_response = await loop();
                         if ( operator_response === "time's up" ) {
                             statechainjs.state[ state_id ].statecoins[ coin_id ][ "operator_up" ] = false;
+                        } else {
+                            statechainjs.state[ state_id ].statecoins[ coin_id ][ "operator_up" ] = true;
                         }
                     }
                     await super_nostr.waitSomeSeconds( 10 );
