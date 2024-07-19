@@ -178,22 +178,19 @@
             <p>Therefore, do not create a statechain utxo unless you are confident that the operator will *stay online* and *not collude with anyone* to pull the rug out from under future holders of your statechain utxo. And if someone *sends you* a statechain utxo and you aren't confident that the operator they used is trustworthy, *do not accept it!* Instead, ask reliable bitcoiners on social media which operators are good and trustworthy, do your own research, and then only use operators who *you* agree are trustworthy.</p>
         </div>
         <h2>List of statechain operators</h2>
+        <p class="none_around">Don't see any? Run your own <a href="./index.html?operator=true" target="_blank">here</a>  (but use an incognito window!)</p>
         <p class="loading">loading...</p>
         <div class="operator_list"></div>
         <script>
-            var handled_events = [];
+            var handled_events = {}
             var handleEvent = event => {
-                var content = JSON.parse( event.content );
-                if ( handled_events.includes( event.id ) ) return;
-                handled_events.push( event );
-                var p = document.createElement( "p" );
-                p.innerText = content.msg.nprofile;
-                $( '.operator_list' ).append( p );
+                if ( Object.keys( handled_events ).includes( event.id ) ) return;
+                handled_events[ event.id ] = event;
             }
             if ( $_GET[ "confused" ] === "true" ) $( '.explainer' ).classList.remove( "hidden" );
         </script>
         <script>
-            (async()=>{
+            var init = async () => {
                 var relay = "wss://nostrue.com";
                 var ids = null;
                 var kinds = [ 56899 ];
@@ -205,7 +202,29 @@
                 var events = await super_nostr.getEvents( relay, ids, kinds, until, since, limit, etags, ptags );
                 events.forEach( handleEvent );
                 if ( events.length ) $( '.loading' ).classList.add( "hidden" );
-            })();
+                else $( '.loading' ).innerText = "None found";
+                var exists_list = [];
+                $$( '.operator' ).forEach( item => exists_list.push( item.getAttribute( "data-event_id" ) ) );
+                Object.keys( handled_events ).forEach( item => {
+                    if ( !exists_list.includes( item ) ) $( '.operator_list' ).innerHTML = '';
+                });
+                Object.keys( handled_events ).forEach( event_id => {
+                    if ( exists_list.includes( event_id ) ) return;
+                    var event = handled_events[ event_id ];
+                    var content = JSON.parse( event.content );
+                    var p = document.createElement( "p" );
+                    p.setAttribute( "data-event_id", event_id );
+                    p.classList.add( "operator" );
+                    p.innerText = content.msg.nprofile;
+                    $( '.operator_list' ).append( p );
+                });
+            }
+            var loop = async () => {
+                init();
+                await super_nostr.waitSomeSeconds( 10 );
+                loop();
+            }
+            loop();
         </script>
     </body>
 </html>
