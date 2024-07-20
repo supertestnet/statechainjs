@@ -512,6 +512,7 @@
                         rcv_privkey,
                         rcv_pubkey,
                         relay: "wss://nostrue.com",
+                        trusted_operators: [],
                         address,
                         statecoins: {},
                         utxos: {},
@@ -555,6 +556,9 @@
                     } else {
                         var operator = prompt( `Enter the nprofile of an operator` );
                     }
+                    var conf = confirm( `Click ok if you are sure this operator is widely regarded as trustworthy, otherwise click cancel. Reminder: you are about to make statechain utxos, and whenever you send them to someone, they will be advised to reject them ("return to sender") if they do not know and trust this operator.` );
+                    if ( !conf ) return;
+                    if ( !statechainjs.state[ state_id ].trusted_operators.includes( operator ) ) statechainjs.state[ state_id ].trusted_operators.push( operator );
                     var [ operator_pub, operator_relays ] = statechainjs.convertNEvent( operator );
 
                     // Step 2. Decompose amount (units of 330)
@@ -727,7 +731,8 @@
                             label: "",
                         }
                         var num_of_statuses = decomposed.length * 2;
-                        await statechainjs.receiveCoins( [coin], decomposed.length + 1 + i, num_of_statuses );
+                        var trust_operator = true;
+                        await statechainjs.receiveCoins( [coin], decomposed.length + 1 + i, num_of_statuses, trust_operator );
                     }
 
                     var sig = tapscript.Signer.taproot.sign( utxo[ "btc_privkey" ], funding_txdata, 0 );
@@ -922,7 +927,7 @@
                     if ( !skiplog ) console.log( JSON.stringify( coins ) );
                     return coins;
                 },
-                receiveCoins: async ( coins, status_index, num_of_statuses ) => {
+                receiveCoins: async ( coins, status_index, num_of_statuses, trust_operator ) => {
                     if ( statechainjs_client && status_index && num_of_statuses ) {
                         var percent = Math.floor( ( status_index / num_of_statuses ) * 100 );
                         $( '.progressBar' ).style.width = percent + "%";
@@ -934,9 +939,18 @@
                         var state_id = Object.keys( statechainjs.state )[ 0 ];
                     } else {
                         var state_id = statechainjs.getPrivkey().substring( 0, 32 );
+                        var rcv_privkey = statechainjs.getPrivkey();
+                        var rcv_pubkey = statechainjs.getPubkey( rcv_privkey );
+                        var address = tapscript.Address.fromScriptPubKey( [ 1, rcv_pubkey ], statechainjs.network );
                         statechainjs.state[ state_id ] = {
                             role: "user",
+                            rcv_privkey,
+                            rcv_pubkey,
+                            relay: "wss://nostrue.com",
+                            trusted_operators: [],
+                            address,
                             statecoins: {},
+                            utxos: {},
                         }
                     }
                     if ( !coins ) coins = JSON.parse( prompt( `enter the string the sender gave you` ) );
@@ -969,6 +983,14 @@
                             if ( status_index_2 === num_of_statuses_2 ) $( '.few_more' ).classList.remove( "hidden" );
                         }
                         var coin = coins[ j ];
+                        var operator = coin[ "operator" ];
+                        if ( !trust_operator && !statechainjs.state[ state_id ].trusted_operators.includes( operator ) ) {
+                            console.log( "You do not yet trust this operator:" );
+                            console.log( operator );
+                            var conf = confirm( `This statechain utxo uses an operator who is not in your list of trusted operators. Click ok if you are willing to trust them (warning! you are advised NOT to trust them without research!), knowing they can rob you if they collude with any prior holder of these utxos. If you aren't sure what to do, you are STRONGLY ADVISED to click cancel or research the trustworthiness of this operator by asking trustworthy bitcoiners about them. You can find their nprofile (which is their identifier) in your browser console so you can ask bitcoiners "Is this statechain operator trustworthy?" And don't just lazily ask on social media where most bitcoiners are scammers. Ask people you know and trust, and do your own independent research, or else click cancel.` );
+                            if ( !conf ) continue;
+                            statechainjs.state[ state_id ].trusted_operators.push( operator );
+                        }
                         var address = statechainjs.state[ state_id ][ "address" ];
                         var amnt = coin[ "amnt" ];
                         var decrement_interval = 3;
