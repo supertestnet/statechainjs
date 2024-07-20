@@ -34,6 +34,7 @@
                 getEvents: async ( relay, ids, kinds, until, since, limit, etags, ptags ) => {
                     var socket = new WebSocket( relay );
                     var events = [];
+                    var opened = false;
                     socket.addEventListener( 'message', async function( message ) {
                         var [ type, subId, event ] = JSON.parse( message.data );
                         var { kind, content } = event || {}
@@ -41,6 +42,7 @@
                         events.push( event );
                     });
                     socket.addEventListener( 'open', async function( e ) {
+                        opened = true;
                         var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
                         var filter  = {}
                         if ( ids ) filter.ids = ids;
@@ -54,6 +56,10 @@
                         socket.send( JSON.stringify( subscription ) );
                     });
                     var loop = async () => {
+                        if ( !opened ) {
+                            await super_nostr.waitSomeSeconds( 1 );
+                            return await loop();
+                        }
                         var len = events.length;
                         await super_nostr.waitSomeSeconds( 1 );
                         if ( len !== events.length ) return await loop();
@@ -370,7 +376,7 @@
                 <p>Amount added so far: <span class="amount_available"></span></p>
                 <p>Estimated fee needed: <span class="fee_needed">0</span></p>
                 <div class="inputs"></div>
-                <p><button class="submit_tx">Send coins</button></p>
+                <p><button class="submit_tx">Send coins</button> <button class="restart_tx">Restart tx</button></p></p>
             </div>
             <div class="coinboxes">
                 <h2>Bitcoin utxos</h2>
@@ -1383,7 +1389,6 @@
                             var parity_byte = vin_with_extra_data[ i ][ "parity_byte" ];
                             var operator_pubkey_with_parity = parity_byte + script[ 2 ];
                             var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( privkey, true );
-                            console.log( parity_byte, operator_pubkey_with_parity, multisig_pubkey_with_parity );
                             var backup_pubkey = statechainjs.add2Pubkeys( operator_pubkey_with_parity, multisig_pubkey_with_parity ).substring( 2 );
                         }
                         var taptree = [target];
@@ -2160,6 +2165,10 @@
                         div.getElementsByClassName( "utxo_label" )[ 0 ].setAttribute( "data-utxo_id", coin[ "utxo_id" ] );
                         $( '.sc_tx_prep_box .inputs' ).append( div.firstElementChild );
                     });
+
+                    document.getElementsByClassName( "sc_tx_prep_box" )[ 0 ].getElementsByClassName( "restart_tx" )[ 0 ].onclick = async () => {
+                        statechainjs_client.sc_tx_inputs = [];
+                    }
 
                     document.getElementsByClassName( "sc_tx_prep_box" )[ 0 ].getElementsByClassName( "submit_tx" )[ 0 ].onclick = async () => {
                         var coins = JSON.parse( JSON.stringify( statechainjs_client.sc_tx_inputs ) );
