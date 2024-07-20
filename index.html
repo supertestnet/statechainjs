@@ -147,6 +147,8 @@
             }
             sessionStorage.removeItem( "modal_cleared" );
             sessionStorage.removeItem( "funding_info" );
+            sessionStorage.removeItem( "operator_to_use" );
+            sessionStorage.removeItem( "allow_risk" );
             async function getNote( item ) {
                 async function isNoteSetYet( note_i_seek ) {
                     return new Promise( function( resolve, reject ) {
@@ -344,6 +346,15 @@
             }
             .modal input {
                 width: 90%;
+            }
+            .blink_me {
+                animation: blinker 1s linear infinite;
+            }
+
+            @keyframes blinker {  
+                50% {
+                    opacity: 0;
+                }
             }
             @media screen and (max-width: 600px) {
             }
@@ -1322,10 +1333,6 @@
                 },
                 unilaterallyWithdrawFromStatechain: async ( state_id, coin_ids ) => {
                     if ( !state_id ) state_id = Object.keys( statechainjs.state )[ 0 ];
-                    var fee_utxo = statechainjs.findFeeUtxo( state_id );
-                    var fee_threshold = 500;
-                    if ( !fee_utxo ) return alert( `you do not have enough funds on the base layer to withdraw your statecoins and pay the requisite fees. Add funds and try again` );
-                    if ( fee_utxo[ "amnt" ] < fee_threshold + 330 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
                     if ( !coin_ids ) coin_ids = [ Object.keys( statechainjs.state[ state_id ][ "statecoins" ] )[ 0 ] ];
                     var address = statechainjs.state[ state_id ][ "address" ];
                     var locktimes = [];
@@ -1339,6 +1346,10 @@
                     var block_or_blocks = "blocks go";
                     if ( locktime - current_blockheight === 1 ) block_or_blocks = "block goes";
                     if ( current_blockheight < locktime ) return alert( `you cannot unilaterally withdraw this set of coins til ${locktime - current_blockheight} more ${block_or_blocks} by` );
+                    var fee_utxo = statechainjs.findFeeUtxo( state_id );
+                    var fee_threshold = 500;
+                    if ( !fee_utxo ) return alert( `you do not have enough funds on the base layer to withdraw your statecoins and pay the requisite fees. Add funds and try again` );
+                    if ( fee_utxo[ "amnt" ] < fee_threshold + 330 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
                     var vin_with_extra_data = [];
                     var vout = [];
                     var txfee = 500;
@@ -2040,9 +2051,36 @@
                     }
                     if ( statechainjs_client.bl_tx_inputs.length && statechainjs_client.bl_tx_outputs.length ) {
                         div.getElementsByClassName( "submit_tx" )[ 0 ].onclick = async () => {
-                            var conf = true;
-                            if ( amnt_available < fee_needed ) var conf = confirm( `Your fee is below the estimated fee needed! Are you sure you want to use this fee? It might bork everything` );
-                            if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) var conf = confirm( `Your fee is over 5% higher than the estimated fee needed! Are you sure you want to use this fee?` );
+                            if ( amnt_available < fee_needed ) {
+                                sessionStorage.removeItem( "modal_cleared" );
+                                sessionStorage.removeItem( "allow_risk" );
+                                var div2 = document.createElement( "div" );
+                                div2.innerHTML = `
+                                    <div>
+                                        <p>Your fee is below the estimated fee needed! Are you sure you want to use this fee? <span class="blink_me">It probably won't work and you will probably lose this money!</span></p>
+                                        <p><button class="risk_it">Risk it</button> <button class="cancel_it">Cancel</button></p>
+                                    </div>
+                                `;
+                                div2.getElementsByClassName( "risk_it" )[ 0 ].onclick = () => {
+                                    sessionStorage[ "modal_cleared" ] = true;
+                                    sessionStorage[ "allow_risk" ] = 1;
+                                    modalVanish();
+                                }
+                                div2.getElementsByClassName( "cancel_it" )[ 0 ].onclick = () => {
+                                    sessionStorage[ "modal_cleared" ] = true;
+                                    sessionStorage[ "allow_risk" ] = 0;
+                                    modalVanish();
+                                }
+                                var block_til_clear = true;
+                                showModal( div2.firstElementChild, block_til_clear, false );
+                                await getNote( "modal_cleared" );
+                                var conf = await getNote( "allow_risk" );
+                                sessionStorage.removeItem( "modal_cleared" );
+                                sessionStorage.removeItem( "allow_risk" )
+                                var conf = !!Number( conf );
+                                if ( !conf ) return;
+                            }
+                            if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) conf = confirm( `Your fee is over 5% higher than the estimated fee needed! Are you sure you want to use this fee?` );
                             if ( !conf ) return;
                             var vin_with_extra_data = [];
                             var vout = JSON.parse( JSON.stringify( statechainjs_client.bl_tx_outputs ) );
