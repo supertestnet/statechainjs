@@ -178,7 +178,7 @@
                 var average = Math.floor( amnt_available / num_of_boxes_to_make );
                 var leftover = amnt_available - average * num_of_boxes_to_make;
                 var boxes = ``;
-                var i; for ( i=0; i<num_of_boxes_to_make; i++ ) boxes += `<p><input class="statechain_utxo_box" type="number" min="330" step="1" value="${average}" data-current_value="${average}"></p>`;
+                var i; for ( i=0; i<num_of_boxes_to_make; i++ ) boxes += `<p><input class="statechain_utxo_box" type="number" min="830" step="1" value="${average}" data-current_value="${average}"></p>`;
                 var div = document.createElement( "div" );
                 div.innerHTML = `
                     <div>
@@ -204,7 +204,7 @@
                             e.target.value = Number( e.target.getAttribute( "data-current_value" ) );
                             return;
                         }
-                        if ( e.target.value < 330 ) {
+                        if ( e.target.value < 830 ) {
                             e.target.value = Number( e.target.getAttribute( "data-current_value" ) );
                             return;
                         }
@@ -579,8 +579,8 @@
                     amnt = amnt - txfee;
 
                     // subtract the modulus from my amount so that it is a multiple
-                    // of 330 and then find out what multiple of 330 it is
-                    var what_multiple = Math.floor( amnt / 330 );
+                    // of 830 and then find out what multiple of 830 it is
+                    var what_multiple = Math.floor( amnt / 830 );
 
                     var selector = `<select class="selector">`;
                     var i; for ( i=0; i<what_multiple; i++ ) selector += `<option>${i + 1}</option>`;
@@ -655,7 +655,8 @@
                         console.log( operator_response );
                         if ( operator_response === "time's up" ) {
                             alert( 'aborting because operator is down' );
-                            continue;
+                            modalVanish();
+                            return;
                         }
                         var a_value = operator_response[ "msg" ][ "a_value" ];
                         var parity_byte = operator_response[ "msg" ][ "parity_byte" ];
@@ -695,14 +696,10 @@
 
                     // For each utxo, get sigs that send the utxo to the
                     // depositor after 2016 blocks
-                    var current_blockheight = await statechainjs.getBlockheight();
-                    var timelock = 2016;
-                    var locktime = current_blockheight + timelock;
-                    console.log( `when you can withdraw:`, locktime );
                     var address = statechainjs.state[ state_id ][ "address" ];
                     var i; for ( i=0; i<decomposed.length; i++ ) {
                         var amnt = decomposed[ i ];
-                        var withdraw_txdata = tapscript.Tx.create({
+                        var withdraw_txdata_1 = tapscript.Tx.create({
                             vin: [{
                                 txid: funding_txid,
                                 vout: i,
@@ -712,14 +709,33 @@
                                 },
                             }],
                             vout: [{
-                                value: amnt,
-                                scriptPubKey: tapscript.Address.toScriptPubKey( address ),
+                                value: amnt - 500,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( multisigs[ i ][ "multisig" ] ),
                             }],
-                            locktime,
                         });
                         var target = tapscript.Tap.encodeScript( multisigs[ i ][ "script" ] );
-                        var sighash = tapscript.Signer.taproot.hash( withdraw_txdata, 0, {extension: target, sigflag: 128 | 3} ).hex;
-                        var withdraw_sighash = sighash;
+                        var sighash_1 = tapscript.Signer.taproot.hash( withdraw_txdata_1, 0, {extension: target} ).hex;
+                        var initiate_withdrawal_txid = tapscript.Tx.util.getTxid( withdraw_txdata_1 );
+                        var locklength = 2016;
+                        var withdraw_txdata_2 = tapscript.Tx.create({
+                            vin: [{
+                                txid: initiate_withdrawal_txid,
+                                vout: 0,
+                                prevout: {
+                                    value: amnt - 500,
+                                    scriptPubKey: tapscript.Address.toScriptPubKey( multisigs[ i ][ "multisig" ] ),
+                                },
+                                sequence: locklength,
+                            }],
+                            vout: [{
+                                value: amnt - 500,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( address ),
+                            }],
+                        });
+                        var target = tapscript.Tap.encodeScript( multisigs[ i ][ "script" ] );
+                        var sighash_2 = tapscript.Signer.taproot.hash( withdraw_txdata_2, 0, {extension: target, sigflag: 128 | 3} ).hex;
+                        var withdraw_sighash_1 = sighash_1;
+                        var withdraw_sighash_2 = sighash_2;
                         var coin = {
                             state_id,
                             type: "statecoin",
@@ -731,10 +747,9 @@
                             vout: i,
                             a_value: multisigs[ i ][ "a_value" ],
                             withdraw_sigs: [],
-                            withdraw_sighash,
+                            withdraw_sighash_1,
+                            withdraw_sighash_2,
                             prior_txs: [],
-                            timelock,
-                            locktime: locktime + 3,
                             privkey: multisigs[ i ][ "multisig_privkey" ],
                             amnt,
                             multisig: multisigs[ i ][ "multisig" ],
@@ -864,7 +879,7 @@
                             console.log( JSON.stringify( msg_for_user ) );
                             return msg_for_user;
                         }
-                        if ( !( "sighash" in user_info[ "msg" ] ) ) {
+                        if ( !( "sighash_1" in user_info[ "msg" ] ) || !( "sighash_2" in user_info[ "msg" ] ) ) {
                             var msg_for_user = {
                                 type: "transfer_response",
                                 msg: {
@@ -876,8 +891,10 @@
                             delete statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ];
                             return msg_for_user;
                         }
-                        var sighash = user_info[ "msg" ][ "sighash" ];
-                        var sig = await nobleSecp256k1.schnorr.sign( sighash, recovered_privkey );
+                        var sighash_1 = user_info[ "msg" ][ "sighash_1" ];
+                        var sighash_2 = user_info[ "msg" ][ "sighash_2" ];
+                        var sig_1 = await nobleSecp256k1.schnorr.sign( sighash_1, recovered_privkey );
+                        var sig_2 = await nobleSecp256k1.schnorr.sign( sighash_2, recovered_privkey );
                         var num_of_times_signed = statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ][ "num_of_times_signed" ] + 1;
                         var parity_byte = statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ][ "parity_byte" ];
                         a_value = statechainjs.getPrivkey().substring( 0, 62 );
@@ -894,7 +911,8 @@
                             msg: {
                                 a_value,
                                 num_of_times_signed,
-                                sig,
+                                sig_1,
+                                sig_2,
                                 parity_byte,
                             }
                         }
@@ -1005,7 +1023,7 @@
                         var address = statechainjs.state[ state_id ][ "address" ];
                         var amnt = coin[ "amnt" ];
                         var decrement_interval = 3;
-                        var withdraw_txdata = tapscript.Tx.create({
+                        var withdraw_txdata_1 = tapscript.Tx.create({
                             vin: [{
                                 txid: coin[ "funding_txid" ],
                                 vout: coin[ "vout" ],
@@ -1015,14 +1033,39 @@
                                 },
                             }],
                             vout: [{
-                                value: amnt,
-                                scriptPubKey: tapscript.Address.toScriptPubKey( address ),
+                                value: amnt - 500,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
                             }],
-                            locktime: coin[ "locktime" ] - decrement_interval,
                         });
                         var target = tapscript.Tap.encodeScript( coin[ "script" ] );
-                        var sighash = tapscript.Signer.taproot.hash( withdraw_txdata, 0, {extension: target, sigflag: 128 | 3} ).hex;
-                        var withdraw_sighash = sighash;
+                        var sighash_1 = tapscript.Signer.taproot.hash( withdraw_txdata_1, 0, {extension: target} ).hex;
+                        var initiate_withdrawal_txid = tapscript.Tx.util.getTxid( withdraw_txdata_1 );
+                        var withdraw_sigs = coin[ "withdraw_sigs" ];
+                        var locklength = 2016;
+                        if ( locklength - ( 3 * withdraw_sigs.length ) < 3 ) {
+                            alert( `aborting because coin has been transferred too many times` );
+                            continue;
+                        }
+                        var sequence_num = locklength - ( 3 * withdraw_sigs.length );
+                        var withdraw_txdata_2 = tapscript.Tx.create({
+                            vin: [{
+                                txid: initiate_withdrawal_txid,
+                                vout: 0,
+                                prevout: {
+                                    value: amnt - 500,
+                                    scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                },
+                                sequence: sequence_num,
+                            }],
+                            vout: [{
+                                value: amnt - 500,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( address ),
+                            }],
+                        });
+                        var target = tapscript.Tap.encodeScript( coin[ "script" ] );
+                        var sighash_2 = tapscript.Signer.taproot.hash( withdraw_txdata_2, 0, {extension: target, sigflag: 128 | 3} ).hex;
+                        var withdraw_sighash_1 = sighash_1;
+                        var withdraw_sighash_2 = sighash_2;
                         var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
                         var msg_for_operator = {
                             type: "transfer",
@@ -1030,7 +1073,8 @@
                                 msg_id,
                                 nprofile: coin[ "operator" ],
                                 a_value: coin[ "a_value" ],
-                                sighash,
+                                sighash_1,
+                                sighash_2,
                                 coin_id: coin[ "coin_id" ],
                             }
                         }
@@ -1058,19 +1102,21 @@
                         var expected_parity_byte = operator_response[ "msg" ][ "parity_byte" ];
                         var real_parity_byte = coin[ "parity_byte" ];
                         if ( expected_parity_byte != real_parity_byte ) {
+                            console.log( expected_parity_byte, real_parity_byte, coin, operator_response );
                             alert( `aborting because someone lied to you about the parity byte` );
                             continue;
                         }
                         var num_of_times_signed = operator_response[ "msg" ][ "num_of_times_signed" ];
-                        var withdraw_sig = operator_response[ "msg" ][ "sig" ] + "83";
+                        var withdraw_sig_1 = operator_response[ "msg" ][ "sig_1" ];
+                        var withdraw_sig_2 = operator_response[ "msg" ][ "sig_2" ] + "83";
                         var operator_multisig_pubkey = coin[ "operator_multisig_pubkey" ];
-                        var sig_is_valid = await nobleSecp256k1.schnorr.verify( withdraw_sig.substring( 0, 128 ), withdraw_sighash, operator_multisig_pubkey );
-                        if ( !sig_is_valid ) {
+                        var sig_1_is_valid = await nobleSecp256k1.schnorr.verify( withdraw_sig_1.substring( 0, 128 ), withdraw_sighash_1, operator_multisig_pubkey );
+                        var sig_2_is_valid = await nobleSecp256k1.schnorr.verify( withdraw_sig_2.substring( 0, 128 ), withdraw_sighash_2, operator_multisig_pubkey );
+                        if ( !sig_2_is_valid || !sig_1_is_valid ) {
                             alert( `aborting because invalid sig` );
                             continue;
                         }
                         var coin_id = coin[ "coin_id" ];
-                        var withdraw_sigs = coin[ "withdraw_sigs" ];
                         var prior_txs = coin[ "prior_txs" ];
                         if ( num_of_times_signed - 1 != prior_txs.length || prior_txs.length != withdraw_sigs.length ) {
                             alert( `aborting because one of these numbers didn't match: prior_sigs.length, prior_txs.length, num_of_times_signed` );
@@ -1081,27 +1127,53 @@
                         var prior_vout = null;
                         var dont_add = false;
                         var i; for ( i=0; i<prior_txs.length; i++ ) {
-                            var prior_sig = withdraw_sigs[ i ].substring( 0, 128 );
-                            var tx = tapscript.Tx.decode( prior_txs[ i ][ 0 ] );
-                            if ( tx[ "vin" ].length !== 1 ) {
-                                alert( `aborting because invalid prior transfer` );
+                            var prior_sig_1 = withdraw_sigs[ i ][ 0 ].substring( 0, 128 );
+                            var prior_sig_2 = withdraw_sigs[ i ][ 1 ].substring( 0, 128 );
+                            var tx_1 = tapscript.Tx.create({
+                                vin: [{
+                                    txid: coin[ "funding_txid" ],
+                                    vout: coin[ "vout" ],
+                                    prevout: {
+                                        value: amnt,
+                                        scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                    },
+                                }],
+                                vout: [{
+                                    value: amnt - 500,
+                                    scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                }],
+                            });
+                            var tx_1_txid = tapscript.Tx.util.getTxid( tx_1 );
+                            var tx_2 = tapscript.Tx.decode( prior_txs[ i ][ 0 ] );
+                            if ( tx_2[ "vin" ].length !== 1 ) {
+                                alert( `aborting because invalid number of inputs in prior transfer` );
                                 dont_add = true;
                                 continue;
                             }
-                            if ( tx.locktime - ( ( 3 * withdraw_sigs.length ) - ( i * 3 ) ) != coin[ "locktime" ] - decrement_interval ) {
+                            if ( tx_2[ "vin" ][ 0 ].txid !== tx_1_txid ) {
+                                alert( `aborting because prior transfer had wrong txid` );
+                                dont_add = true;
+                                continue;
+                            }
+                            if ( tx_2[ "vin" ][ 0 ].vout !== 0 ) {
+                                alert( `aborting because prior transfer had wrong vout` );
+                                dont_add = true;
+                                continue;
+                            }
+                            if ( parseInt( tx_2[ "vin" ][ 0 ].sequence, 16 ) + ( 3 * i ) !== locklength ) {
                                 alert( `aborting because invalid prior locktime` );
                                 continue;
                             }
                             var prior_script = prior_txs[ i ][ 1 ];
                             var prior_target = tapscript.Tap.encodeScript( prior_script );
-                            if ( !prior_txid ) prior_txid = tx.vin[ 0 ].txid;
-                            else if ( tx.vin[ 0 ].txid !== prior_txid ) {
+                            if ( !prior_txid ) prior_txid = tx_1.vin[ 0 ].txid;
+                            else if ( tx_1.vin[ 0 ].txid !== prior_txid ) {
                                 alert( `aborting because invalid prior txid` );
                                 dont_add = true;
                                 continue;
                             }
-                            if ( !prior_vout ) prior_vout = tx.vin[ 0 ].vout;
-                            else if ( tx.vin[ 0 ].vout !== prior_vout ) {
+                            if ( !prior_vout ) prior_vout = tx_1.vin[ 0 ].vout;
+                            else if ( tx_1.vin[ 0 ].vout !== prior_vout ) {
                                 alert( `aborting because invalid prior vout` );
                                 dont_add = true;
                                 continue;
@@ -1152,6 +1224,11 @@
                                 dont_add = true;
                                 continue;
                             }
+                            if ( coin[ "amnt" ] < 500 + 330 ) {
+                                alert( `aborting because statechain utxo has a too-small amount` );
+                                dont_add = true;
+                                continue;
+                            }
                             var script = coin[ "script" ];
                             if ( script.length != 4 ) {
                                 alert( `aborting because script has wrong template length: ${script}` );
@@ -1195,21 +1272,32 @@
                                 dont_add = true;
                                 continue;
                             }
-                            tx.vin[ 0 ].prevout = {
+                            tx_1.vin[ 0 ].prevout = {
                                 value: prior_amnt,
                                 scriptPubKey: tapscript.Address.toScriptPubKey( prior_addy ),
                             }
-                            var prior_sighash = tapscript.Signer.taproot.hash( tx, 0, {extension: prior_target, sigflag: 128 | 3} ).hex;
-                            var sig_is_valid = await nobleSecp256k1.schnorr.verify( prior_sig, prior_sighash, operator_multisig_pubkey );
-                            if ( !sig_is_valid ) {
-                                alert( `aborting because invalid sig` );
+                            tx_2.vin[ 0 ].prevout = {
+                                value: prior_amnt - 500,
+                                scriptPubKey: tapscript.Address.toScriptPubKey( prior_addy ),
+                            }
+                            var prior_sighash_1 = tapscript.Signer.taproot.hash( tx_1, 0, {extension: prior_target} ).hex;
+                            var prior_sighash_2 = tapscript.Signer.taproot.hash( tx_2, 0, {extension: prior_target, sigflag: 128 | 3} ).hex;
+                            var sig_1_is_valid = await nobleSecp256k1.schnorr.verify( prior_sig_1, prior_sighash_1, operator_multisig_pubkey );
+                            var sig_2_is_valid = await nobleSecp256k1.schnorr.verify( prior_sig_2, prior_sighash_2, operator_multisig_pubkey );
+                            if ( !sig_1_is_valid ) {
+                                alert( `aborting because invalid sig_1` );
+                                dont_add = true;
+                                continue;
+                            }
+                            if ( !sig_2_is_valid ) {
+                                alert( `aborting because invalid sig_2` );
                                 dont_add = true;
                                 continue;
                             }
                         }
                         if ( dont_add ) continue;
-                        withdraw_sigs.push( withdraw_sig );
-                        prior_txs.push( [ tapscript.Tx.encode( withdraw_txdata ).hex, coin[ "script" ] ] );
+                        withdraw_sigs.push( [ withdraw_sig_1, withdraw_sig_2 ] );
+                        prior_txs.push( [ tapscript.Tx.encode( withdraw_txdata_2 ).hex, coin[ "script" ] ] );
                         statechainjs.state[ state_id ][ "statecoins" ][ coin_id ] = {
                             state_id,
                             type: "statecoin",
@@ -1221,10 +1309,9 @@
                             vout: coin[ "vout" ],
                             a_value,
                             withdraw_sigs,
-                            withdraw_sighash,
+                            withdraw_sighash_1,
+                            withdraw_sighash_2,
                             prior_txs,
-                            timelock: coin[ "timelock" ],
-                            locktime: coin[ "locktime" ] - decrement_interval,
                             privkey: coin[ "privkey" ],
                             amnt: coin[ "amnt" ],
                             multisig: coin[ "multisig" ],
@@ -1232,7 +1319,7 @@
                             label: "",
                             operator_up: true,
                         }
-                        console.log( `when you can withdraw:`, coin[ "locktime" ] - decrement_interval );
+                        // console.log( `when you can withdraw:`, coin[ "locktime" ] - decrement_interval );
                     }
                     if ( statechainjs_client && status_index === num_of_statuses ) {
                         await super_nostr.waitSomeSeconds( 2 );
@@ -1334,22 +1421,63 @@
                 unilaterallyWithdrawFromStatechain: async ( state_id, coin_ids ) => {
                     if ( !state_id ) state_id = Object.keys( statechainjs.state )[ 0 ];
                     if ( !coin_ids ) coin_ids = [ Object.keys( statechainjs.state[ state_id ][ "statecoins" ] )[ 0 ] ];
-                    var address = statechainjs.state[ state_id ][ "address" ];
-                    var locktimes = [];
-                    coin_ids.forEach( ( id, index ) => {
-                        var coin = statechainjs.state[ state_id ][ "statecoins" ][ id ];
-                        if ( !locktimes.includes( coin[ "locktime" ] ) ) locktimes.push( coin[ "locktime" ] );
-                    });
-                    if ( locktimes.length > 1 ) return alert( `you cannot withdraw multiple coins that have different locktimes, try again` );
-                    var current_blockheight = await statechainjs.getBlockheight();
-                    var locktime = locktimes[ 0 ];
-                    var block_or_blocks = "blocks go";
-                    if ( locktime - current_blockheight === 1 ) block_or_blocks = "block goes";
-                    if ( current_blockheight < locktime ) return alert( `you cannot unilaterally withdraw this set of coins til ${locktime - current_blockheight} more ${block_or_blocks} by` );
                     var fee_utxo = statechainjs.findFeeUtxo( state_id );
                     var fee_threshold = 500;
                     if ( !fee_utxo ) return alert( `you do not have enough funds on the base layer to withdraw your statecoins and pay the requisite fees. Add funds and try again` );
                     if ( fee_utxo[ "amnt" ] < fee_threshold + 330 ) return alert( `To receive statecoins you need enough funds on the base layer to pay for fees, which means you need at least one "real" bitcoin utxo of 830 sats or more in your wallet before you can run this function. So run depositToWallet() first` );
+                    var address = statechainjs.state[ state_id ][ "address" ];
+                    var locktimes = [];
+                    coin_ids.forEach( ( id, index ) => {
+                        var coin = statechainjs.state[ state_id ][ "statecoins" ][ id ];
+                        var most_recent_tx = tapscript.Tx.decode( coin[ "prior_txs" ][ coin[ "prior_txs" ].length - 1 ][ 0 ] );
+                        var most_recent_locktime = most_recent_tx[ "vin" ][ 0 ].sequence;
+                        if ( !locktimes.includes( coin[ "locktime" ] ) ) locktimes.push( most_recent_locktime );
+                    });
+                    if ( locktimes.length > 1 ) return alert( `you cannot withdraw multiple coins that have different locktimes, try again` );
+                    var locktime = parseInt( locktimes[ 0 ], 16 );
+                    var coin = statechainjs.state[ state_id ][ "statecoins" ][ coin_ids[ 0 ] ];
+                    var withdraw_txdata_1 = tapscript.Tx.create({
+                        vin: [{
+                            txid: coin[ "funding_txid" ],
+                            vout: coin[ "vout" ],
+                            prevout: {
+                                value: coin[ "amnt" ],
+                                scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                            },
+                        }],
+                        vout: [{
+                            value: coin[ "amnt" ] - 500,
+                            scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                        }],
+                    });
+                    var target = tapscript.Tap.encodeScript( coin[ "script" ] );
+                    var sig = tapscript.Signer.taproot.sign( coin[ "privkey" ], withdraw_txdata_1, 0, {extension: target} );
+                    var script = coin[ "script" ];
+                    var parity_byte = coin[ "parity_byte" ];
+                    var operator_pubkey_with_parity = parity_byte + script[ 2 ];
+                    var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( coin[ "privkey" ], true );
+                    var backup_pubkey = statechainjs.add2Pubkeys( operator_pubkey_with_parity, multisig_pubkey_with_parity ).substring( 2 );
+                    var taptree = [target];
+                    var [ _, cblock ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree, target });
+                    var operator_sig_1 = coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ][ 0 ];
+                    var operator_sig_2 = coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ][ 1 ];
+                    console.log( "operator_sig_1:", operator_sig_1 );
+                    withdraw_txdata_1[ "vin" ][ 0 ].witness = [ operator_sig_1, sig, script, cblock ];
+                    var txhex = tapscript.Tx.encode( withdraw_txdata_1 ).hex;
+                    console.log( 'here is your withdraw tx:' );
+                    console.log( txhex );
+                    var div = document.createElement( "div" );
+                    div.innerHTML = `
+                        <div>
+                            <p>Broadcast this txhex at mutinynet.com/tx/push</p>
+                            <p>${txhex}</p>
+                        </div>
+                    `;
+                    await super_nostr.waitSomeSeconds( 1 );
+                    sessionStorage.removeItem( "modal_cleared" );
+                    showModal( div.firstElementChild, true );
+                    await getNote( "modal_cleared" );
+                    var txid = tapscript.Tx.util.getTxid( withdraw_txdata_1 );
                     var vin_with_extra_data = [];
                     var vout = [];
                     var txfee = 500;
@@ -1358,21 +1486,22 @@
                         var coin = JSON.parse( JSON.stringify( coins[ id ] ) );
                         //remove the statechain utxo from your list of statechain utxos
                         delete statechainjs.state[ state_id ][ "statecoins" ][ id ];
+
                         vin_with_extra_data.push({
-                            txid: coin[ "funding_txid" ],
-                            vout: coin[ "vout" ],
+                            txid,
+                            vout: 0,
                             prevout: {
-                                value: coin[ "amnt" ],
+                                value: coin[ "amnt" ] - 500,
                                 scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
                             },
-                            witness: [ coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ] ],
+                            sequence: locktime,
+                            witness: [ operator_sig_2 ],
                             privkey: coin[ "privkey" ],
                             script: coin[ "script" ],
-                            sighash: coin[ "withdraw_sighash" ],
                             parity_byte: coin[ "parity_byte" ],
                         });
                         vout.push({
-                            value: coin[ "amnt" ],
+                            value: coin[ "amnt" ] - 500,
                             scriptPubKey: tapscript.Address.toScriptPubKey( address ),
                             vout: coin[ "vout" ],
                         });
@@ -1388,14 +1517,12 @@
                         witness: [],
                         privkey: fee_utxo[ "btc_privkey" ],
                         script: [ "OP_1" ],
-                        sighash: "",
                         parity_byte: "",
                     });
                     vin = JSON.parse( JSON.stringify( vin_with_extra_data ) );
                     vin.forEach( item => {
                         delete item[ "privkey" ];
                         delete item[ "script" ];
-                        delete item[ "withdraw_sighash" ];
                         delete item[ "parity_byte" ];
                     });
                     vout.sort( ( a, b ) => a[ "vout" ] - b[ "vout" ] );
@@ -1407,7 +1534,6 @@
                     var withdraw_txdata = tapscript.Tx.create({
                         vin,
                         vout,
-                        locktime,
                     });
                     var i; for ( i=0; i<vin.length; i++ ) {
                         var privkey = vin_with_extra_data[ i ][ "privkey" ];
@@ -1431,12 +1557,13 @@
                         if ( i === vin.length - 1 ) vin[ i ].witness.pop();
                     }
                     var txhex = tapscript.Tx.encode( withdraw_txdata ).hex;
-                    console.log( 'here is your withdraw tx:' );
+                    console.log( `here is your finalized withdraw tx which you should only broadcast after ${locktime} blocks:` );
                     console.log( txhex );
+                    await super_nostr.waitSomeSeconds( 1 );
                     var div = document.createElement( "div" );
                     div.innerHTML = `
                         <div>
-                            <p>Broadcast this txhex at mutinynet.com/tx/push</p>
+                            <p>here is your finalized withdraw tx which you should only broadcast after ${locktime} blocks at mutinynet.com/tx/push</p>
                             <p>${txhex}</p>
                         </div>
                     `;
@@ -1811,7 +1938,7 @@
                             <p><button class="withdraw_unilaterally">Withdraw unilaterally</button></p>
                         `;
                         html += `
-                            <p><button class="view_expiration_date">View expiration date</button></p>
+                            <p><button class="view_wait_time">View wait time</button></p>
                         `;
                     }
                     html += `
@@ -1840,14 +1967,15 @@
                         }
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
-                        div.getElementsByClassName( "view_expiration_date" )[ 0 ].onclick = async () => {
+                        div.getElementsByClassName( "view_wait_time" )[ 0 ].onclick = async () => {
                             var inner = document.createElement( "div" );
                             var current_blockheight = await statechainjs.getBlockheight();
+                            var most_recent_tx = tapscript.Tx.decode( coin[ "prior_txs" ][ coin[ "prior_txs" ].length - 1 ][ 0 ] );
+                            var locktime = parseInt( most_recent_tx[ "vin" ][ 0 ].sequence, 16 );
                             inner.innerHTML = `
                                 <div>
-                                    <p>Expires: ${coin[ "locktime" ]}</p>
-                                    <p>Now: ${current_blockheight}</p>
-                                    <p>Estimated time til then: ${coin[ "locktime" ] - current_blockheight} blocks</p>
+                                    <p>Wait time if you unilaterally withdraw: ${locktime} blocks</p>
+                                    <p>Wait time if you cooperatively withdraw: 0 blocks</p>
                                 </div>
                             `;
                             showModal( inner.firstElementChild );
@@ -2301,6 +2429,7 @@
                             return answer;
                         }
                         var operator_response = await loop();
+                        if ( !( coin_id in statechainjs.state[ state_id ].statecoins ) ) continue;
                         if ( operator_response === "time's up" ) {
                             statechainjs.state[ state_id ].statecoins[ coin_id ][ "operator_up" ] = false;
                         } else {
