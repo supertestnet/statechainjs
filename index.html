@@ -2179,6 +2179,7 @@
                     }
                     if ( statechainjs_client.bl_tx_inputs.length && statechainjs_client.bl_tx_outputs.length ) {
                         div.getElementsByClassName( "submit_tx" )[ 0 ].onclick = async () => {
+                            var conf = true;
                             if ( amnt_available < fee_needed ) {
                                 sessionStorage.removeItem( "modal_cleared" );
                                 sessionStorage.removeItem( "allow_risk" );
@@ -2202,10 +2203,10 @@
                                 var block_til_clear = true;
                                 showModal( div2.firstElementChild, block_til_clear, false );
                                 await getNote( "modal_cleared" );
-                                var conf = await getNote( "allow_risk" );
+                                conf = await getNote( "allow_risk" );
                                 sessionStorage.removeItem( "modal_cleared" );
                                 sessionStorage.removeItem( "allow_risk" )
-                                var conf = !!Number( conf );
+                                conf = !!Number( conf );
                                 if ( !conf ) return;
                             }
                             if ( amnt_available > Math.floor( 1.05 * fee_needed ) ) conf = confirm( `Your fee is over 5% higher than the estimated fee needed! Are you sure you want to use this fee?` );
@@ -2247,7 +2248,8 @@
                                     }
                                     if ( operator_response === "time's up" ) {
                                         alert( 'aborting because operator is down' );
-                                        continue;
+                                        modalVanish();
+                                        return;
                                     }
                                     var keyshard_2 = operator_response[ "msg" ][ "privkey" ];
                                     var full_privkey = statechainjs.add2Privkeys( keyshard_1, keyshard_2 );
