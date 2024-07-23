@@ -7,6 +7,10 @@ A vanilla javascript implementation of a statechain client and an operator
 - a not-quite-fully-trusted operator prevents doublespending by holding a second key to the utxo and only interacting with the latest holder
 - the latest holder can withdraw even if the operator shuts down due to "decrementing timelocks" (explained below)
 
+# Video demo
+
+[![](https://supertestnet.github.io/statechainjs/statechains_pic.jpg)](https://t.co/lTgyAwI38f)
+
 # How statechains work in two paragraphs
 
 A user with "normal bitcoin" deposits it into a multisig bitcoin address (2 of 2) where the depositor has one key and an "operator" has the other. When the depositor wants to transfer the bitcoin to someone else, he does not create a bitcoin transaction, instead he sends his private key to his recipient. The recipient then talks to the operator and basically says "Don't talk to the previous guy anymore, only talk to me." The operator is trusted not to collude with any previous holder -- he must only sign transactions created by the latest holder. Cryptographic keys are used to prove who the latest holder is. (StatechainJS uses nostr.) Note that an operator can rugpull someone by depositing coins to their own statechain (that way they have both keys), then sending those statechain utxos to someone in exchange for goods/services, then using both keys to sweep the funds from the multisig, so that they end up with the goods/services *and* the money. Operators must be trusted not to do this, so do not accept coins from someone who uses an operator you don't trust.
