@@ -618,11 +618,11 @@
                     var multisigs = [];
                     var i; for ( i=0; i<decomposed.length; i++ ) {
                         if ( statechainjs_client ) {
-                            var percent = Math.floor( ( ( i + 1 ) / ( decomposed.length * 2 ) ) * 100 );
+                            var percent = Math.floor( ( ( i + 1 ) / ( ( decomposed.length * 2 ) + 1 ) ) * 100 );
                             $( '.progressBar' ).style.width = percent + "%";
                             $( '.num_so_far' ).innerText = String( i + 1 );
-                            $( '.num_needed' ).innerText = String( decomposed.length * 2 );
-                            if ( ( i + 1 ) === ( decomposed.length * 2 ) ) $( '.few_more' ).classList.remove( "hidden" );
+                            $( '.num_needed' ).innerText = String( ( decomposed.length * 2 ) + 1 );
+                            if ( ( i + 1 ) === ( decomposed.length * 2 ) + 1 ) $( '.few_more' ).classList.remove( "hidden" );
                         }
                         var amnt = decomposed[ i ];
                         // Make a new pubkey
@@ -958,11 +958,11 @@
                 },
                 receiveCoins: async ( coins, status_index, num_of_statuses, trust_operator ) => {
                     if ( statechainjs_client && status_index && num_of_statuses ) {
-                        var percent = Math.floor( ( status_index / num_of_statuses ) * 100 );
+                        var percent = Math.floor( ( status_index / ( num_of_statuses + 1 ) ) * 100 );
                         $( '.progressBar' ).style.width = percent + "%";
                         $( '.num_so_far' ).innerText = String( status_index );
-                        $( '.num_needed' ).innerText = String( num_of_statuses );
-                        if ( ( status_index ) === ( num_of_statuses ) ) $( '.few_more' ).classList.remove( "hidden" );
+                        $( '.num_needed' ).innerText = String( num_of_statuses + 1 );
+                        if ( ( status_index ) === ( num_of_statuses + 1 ) ) $( '.few_more' ).classList.remove( "hidden" );
                     }
                     if ( Object.keys( statechainjs.state ).length ) {
                         var state_id = Object.keys( statechainjs.state )[ 0 ];
@@ -1005,11 +1005,11 @@
                         if ( statechainjs_client && !status_index && !num_of_statuses ) {
                             var status_index_2 = j + 1;
                             var num_of_statuses_2 = coins.length;
-                            var percent = Math.floor( ( status_index_2 / num_of_statuses_2 ) * 100 );
+                            var percent = Math.floor( ( status_index_2 / ( num_of_statuses_2 + 1 ) ) * 100 );
                             $( '.progressBar' ).style.width = percent + "%";
                             $( '.num_so_far' ).innerText = String( status_index_2 );
-                            $( '.num_needed' ).innerText = String( num_of_statuses_2 );
-                            if ( status_index_2 === num_of_statuses_2 ) $( '.few_more' ).classList.remove( "hidden" );
+                            $( '.num_needed' ).innerText = String( ( num_of_statuses_2 + 1 ) );
+                            if ( status_index_2 === num_of_statuses_2 + 1 ) $( '.few_more' ).classList.remove( "hidden" );
                         }
                         var coin = coins[ j ];
                         var operator = coin[ "operator" ];
@@ -2215,9 +2215,38 @@
                             var vout = JSON.parse( JSON.stringify( statechainjs_client.bl_tx_outputs ) );
                             var utxos_to_remove = [];
                             var coins_to_remove = [];
+                            var num_of_statecoins = 0;
+                            var num_of_statecoins_processed = 0;
+                            statechainjs_client.bl_tx_inputs.forEach( item => {
+                                if ( item[ "type" ] === "statecoin" ) num_of_statecoins = num_of_statecoins + 1;
+                            });
+                            if ( num_of_statecoins ) {
+                                var div = document.createElement( "div" );
+                                div.innerHTML = `
+                                    <div class="progress">
+                                        <h2>Progress bar <span id="goal" style="font-size: .8em; font-weight: normal;"></span></h2>
+                                        <p>Note that it often takes up to 30 seconds for the progress bar to move</p>
+                                        <p>You are <span class="num_so_far">loading...</span>/<span class="num_needed">loading...</span>th of the way done</p>
+                                        <p class="few_more hidden">Give it a few more seconds to wrap up...</p>
+                                        <div class="progressOutline" style="height: 2em; border: 1px solid grey; border-radius: 25px; overflow: hidden;">
+                                            <div class="progressBar" style="height: 2em; background-color: #61eb34; width: 0%; transition: width 1s;">
+                                            </div>
+                                        </div>
+                                        <div class="status"></div>
+                                    </div>
+                                `;
+                                await super_nostr.waitSomeSeconds( 1 );
+                                showModal( div.firstElementChild );
+                            }
                             var i; for ( i=0; i<statechainjs_client.bl_tx_inputs.length; i++ ) {
                                 var coin = statechainjs_client.bl_tx_inputs[ i ];
                                 if ( coin[ "type" ] === "statecoin" ) {
+                                    num_of_statecoins_processed = num_of_statecoins_processed + 1;
+                                    var percent = Math.floor( ( ( num_of_statecoins_processed ) / ( num_of_statecoins + 1 ) ) * 100 );
+                                    $( '.progressBar' ).style.width = percent + "%";
+                                    $( '.num_so_far' ).innerText = String( num_of_statecoins_processed );
+                                    $( '.num_needed' ).innerText = String( num_of_statecoins + 1 );
+                                    if ( ( num_of_statecoins_processed ) === ( num_of_statecoins + 1 ) ) $( '.few_more' ).classList.remove( "hidden" );
                                     var operator = coin[ "operator" ];
                                     var state_id = coin[ "state_id" ];
                                     var keyshard_1 = coin[ "privkey" ];
