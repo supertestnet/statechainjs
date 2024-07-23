@@ -7,6 +7,10 @@ A vanilla javascript implementation of a statechain client and an operator
 - a not-quite-fully-trusted operator prevents doublespending by holding a second key to the utxo and only interacting with the latest holder
 - the latest holder can withdraw even if the operator shuts down due to "decrementing timelocks" (explained below)
 
+# How to try it
+
+Just click here: https://supertestnet.github.io/statechainjs/
+
 # Video demo
 
 [![](https://supertestnet.github.io/statechainjs/statechains_pic.jpg)](https://t.co/lTgyAwI38f)
