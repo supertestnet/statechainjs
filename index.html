@@ -696,46 +696,7 @@
 
                     // For each utxo, get sigs that send the utxo to the
                     // depositor after 2016 blocks
-                    var address = statechainjs.state[ state_id ][ "address" ];
                     var i; for ( i=0; i<decomposed.length; i++ ) {
-                        var amnt = decomposed[ i ];
-                        var withdraw_txdata_1 = tapscript.Tx.create({
-                            vin: [{
-                                txid: funding_txid,
-                                vout: i,
-                                prevout: {
-                                    value: amnt,
-                                    scriptPubKey: tapscript.Address.toScriptPubKey( multisigs[ i ][ "multisig" ] ),
-                                },
-                            }],
-                            vout: [{
-                                value: amnt - 500,
-                                scriptPubKey: tapscript.Address.toScriptPubKey( multisigs[ i ][ "multisig" ] ),
-                            }],
-                        });
-                        var target = tapscript.Tap.encodeScript( multisigs[ i ][ "script" ] );
-                        var sighash_1 = tapscript.Signer.taproot.hash( withdraw_txdata_1, 0, {extension: target} ).hex;
-                        var initiate_withdrawal_txid = tapscript.Tx.util.getTxid( withdraw_txdata_1 );
-                        var locklength = 2016;
-                        var withdraw_txdata_2 = tapscript.Tx.create({
-                            vin: [{
-                                txid: initiate_withdrawal_txid,
-                                vout: 0,
-                                prevout: {
-                                    value: amnt - 500,
-                                    scriptPubKey: tapscript.Address.toScriptPubKey( multisigs[ i ][ "multisig" ] ),
-                                },
-                                sequence: locklength,
-                            }],
-                            vout: [{
-                                value: amnt - 500,
-                                scriptPubKey: tapscript.Address.toScriptPubKey( address ),
-                            }],
-                        });
-                        var target = tapscript.Tap.encodeScript( multisigs[ i ][ "script" ] );
-                        var sighash_2 = tapscript.Signer.taproot.hash( withdraw_txdata_2, 0, {extension: target, sigflag: 128 | 3} ).hex;
-                        var withdraw_sighash_1 = sighash_1;
-                        var withdraw_sighash_2 = sighash_2;
                         var coin = {
                             state_id,
                             type: "statecoin",
@@ -747,8 +708,6 @@
                             vout: i,
                             a_value: multisigs[ i ][ "a_value" ],
                             withdraw_sigs: [],
-                            withdraw_sighash_1,
-                            withdraw_sighash_2,
                             prior_txs: [],
                             privkey: multisigs[ i ][ "multisig_privkey" ],
                             amnt,
@@ -1309,8 +1268,6 @@
                             vout: coin[ "vout" ],
                             a_value,
                             withdraw_sigs,
-                            withdraw_sighash_1,
-                            withdraw_sighash_2,
                             prior_txs,
                             privkey: coin[ "privkey" ],
                             amnt: coin[ "amnt" ],
@@ -1940,6 +1897,9 @@
                         html += `
                             <p><button class="view_wait_time">View wait time</button></p>
                         `;
+                        html += `
+                            <p><button class="proof_of_liabilities">Proof of liabilities</button></p>
+                        `;
                     }
                     html += `
                             <p><button class="show_coin_info">Show coin info</button></p>
@@ -1994,6 +1954,93 @@
                             statechainjs.unilaterallyWithdrawFromStatechain( coin[ "state_id" ], [ coin[ "coin_id" ] ] );
                             modalVanish();
                         }
+                        div.getElementsByClassName( "proof_of_liabilities" )[ 0 ].onclick = async () => {
+                            var inner = document.createElement( "div" );
+                            var operator_pubkey_with_parity = coin[ "parity_byte" ] + coin[ "script" ][ 2 ];
+                            var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( coin[ "privkey" ], true );
+                            var backup_pubkey = statechainjs.add2Pubkeys( operator_pubkey_with_parity, multisig_pubkey_with_parity ).substring( 2 );
+                            var taptree = [tapscript.Tap.encodeScript( coin[ "script" ] )];
+                            var [ tpubkey ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree });
+                            var multisig_with_money = tapscript.Address.p2tr.fromPubKey( tpubkey, statechainjs.network );
+                            var withdraw_txdata_1 = tapscript.Tx.create({
+                                vin: [{
+                                    txid: coin[ "funding_txid" ],
+                                    vout: coin[ "vout" ],
+                                    prevout: {
+                                        value: coin[ "amnt" ],
+                                        scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                    },
+                                }],
+                                vout: [{
+                                    value: coin[ "amnt" ] - 500,
+                                    scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                }],
+                            });
+                            var initiate_withdrawal_txid = tapscript.Tx.util.getTxid( withdraw_txdata_1 );
+                            var address = statechainjs.state[ coin[ "state_id" ] ][ "address" ];
+                            var locklength = 2016;
+                            var sequence_num = locklength - ( 3 * ( coin[ "withdraw_sigs" ].length - 1 ) );
+                            var withdraw_txdata_2 = tapscript.Tx.create({
+                                vin: [{
+                                    txid: initiate_withdrawal_txid,
+                                    vout: 0,
+                                    prevout: {
+                                        value: coin[ "amnt" ] - 500,
+                                        scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                    },
+                                    sequence: sequence_num,
+                                }],
+                                vout: [{
+                                    value: coin[ "amnt" ] - 500,
+                                    scriptPubKey: tapscript.Address.toScriptPubKey( address ),
+                                }],
+                            });
+                            var target = tapscript.Tap.encodeScript( coin[ "script" ] );
+                            var sig_1 = coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ][ 0 ];
+                            var sighash_1 = tapscript.Signer.taproot.hash( withdraw_txdata_1, 0, {extension: target} ).hex;
+                            var sig_1_is_valid = await nobleSecp256k1.schnorr.verify( sig_1, sighash_1, coin[ "script" ][ 2 ] );
+                            var sig_2 = coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ][ 1 ].substring( 0, 128 );
+                            var sighash_2 = tapscript.Signer.taproot.hash( withdraw_txdata_2, 0, {extension: target, sigflag: 128 | 3} ).hex;
+                            var sig_2_is_valid = await nobleSecp256k1.schnorr.verify( sig_2, sighash_2, coin[ "script" ][ 2 ] );
+                            inner.innerHTML = `
+                                <div>
+                                    <p style="font-weight: bold;">Proof of reserves</p>
+                                    <p><a href="https://mutinynet.com/address/${coin[ "multisig" ]}" target="_blank" style="color: blue;">${coin[ "multisig" ]}</a></p>
+                                    <p>Visit the above proof_of_reserves address to see the reserves backing this statecoin</p>
+                                    <p>Address script</p>
+                                    <p>${JSON.stringify( coin[ "script" ] )}</p>
+                                    <p>Your keypair</p>
+                                    <p>Privkey: ${coin[ "privkey" ]}</p>
+                                    <p>Pubkey: ${coin[ "script" ][ 0 ]}</p>
+                                    <p>The first pubkey in the address script is derived from your privkey: ${nobleSecp256k1.getPublicKey( coin[ "privkey" ], true ).substring( 2 ) === coin[ "script" ][ 0 ] }</p>
+                                    <p>Backup key: ${backup_pubkey}</p>
+                                    <p>The backup key is your pubkey added to the operator's pubkey using "point addition"</p>
+                                    <p>Backup key + script = your proof_of_reserves address: ${multisig_with_money === coin[ "multisig" ]}</p>
+                                    <p>The above key/address information demonstrates that you are a keyholder in the above address, which -- as you can see by clicking the link at the top -- contains enough money to pay what you are owed. This proves that the reserves to pay you exist.</p>
+                                    <p style="font-weight: bold;">Proof of liabilities</p>
+                                    <p>Signature 1</p>
+                                    <p>${sig_1}</p>
+                                    <p>Sighash 1 (uses sighash_default a.k.a. sighash_all)</p>
+                                    <p>${sighash_1}</p>
+                                    <p>Operator's pubkey</p>
+                                    <p>${coin[ "script" ][ 2 ]}</p>
+                                    <p>Kickoff transaction</p>
+                                    <p>${JSON.stringify( withdraw_txdata_1 )}</p>
+                                    <p>The signature above, created by the operator, has been validated: ${sig_1_is_valid}. It allows you to broadcast the "kickoff transaction," which starts the clock on your unilateral withdrawal transaction.</p>
+                                    <p>Signature 2</p>
+                                    <p>${sig_2}</p>
+                                    <p>Sighash 2 (uses sighash_single | anyone_can_pay)</p>
+                                    <p>${sighash_2}</p>
+                                    <p>Operator's pubkey</p>
+                                    <p>${coin[ "script" ][ 2 ]}</p>
+                                    <p>Withdrawal transaction</p>
+                                    <p>${JSON.stringify( withdraw_txdata_2 )}</p>
+                                    <p>The signature above, created by the operator, has been validated: ${sig_2_is_valid}. It allows you to unilaterally withdraw from the proof_of_reserves address after a timelock expires, i.e. ${sequence_num} blocks after the kickoff transaction confirms.</p>
+                                    <p>The above signatures demonstrate that you have all the info you need to unilaterally withdraw your money from the proof_of_reserves address, thus fulfilling any liabilities toward you. As a reminder, the basic trust assumption of a statechain is that the operator won't collude with a prior keyholder to "override" the timelock and take your money from the proof_of_reserves address before *you* can. Since the operator can do this, your "proof of liabilities" is only a "proof you are owed some money," not a "proof you will receive that money." It is possible for your liabilities to go unfulfilled if the operator robs you.</p>
+                                </div>
+                            `;
+                            showModal( inner.firstElementChild );
+                        }
                     }
                     showModal( div.firstElementChild );
                 },
@@ -2008,7 +2055,6 @@
                     `;
                     div.getElementsByClassName( "submit_label" )[ 0 ].onclick = e => {
                         var label = e.target.parentElement.parentElement.getElementsByClassName( "label" )[ 0 ].value;
-                        console.log( label );
                         if ( utxo[ "type" ] === "statecoin" ) statechainjs.state[ utxo[ "state_id" ] ].statecoins[ utxo[ "coin_id" ] ].label = label;
                         else statechainjs.state[ utxo[ "state_id" ] ].utxos[ utxo[ "utxo_id" ] ].label = label;
                         modalVanish();
