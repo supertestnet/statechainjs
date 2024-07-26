@@ -13,7 +13,7 @@ Just click here: https://supertestnet.github.io/statechainjs/
 
 # Video demo
 
-[![](https://supertestnet.github.io/statechainjs/statechains_pic.jpg)](https://t.co/lTgyAwI38f)
+[![](https://supertestnet.github.io/statechainjs/statechains_pic.jpg)](https://www.youtube.com/watch?v=24pNIs6M7qo)
 
 # How statechains work in two paragraphs
 
