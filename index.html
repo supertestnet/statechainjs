@@ -496,14 +496,16 @@
                 },
                 convertNEvent: nevent => {
                     var arr = bech32.bech32.fromWords( bech32.bech32.decode( nevent, 100_000 ).words );
-                    var hex = statechainjs.bytesToHex( arr );
-                    var event_id = hex.substring( hex.length - 64 );
-                    hex = hex.substring( 0, hex.length - 64 );
+                    var hex = super_nostr.bytesToHex( arr );
+                    if ( !hex.startsWith( "0020" ) ) var event_id = hex.substring( hex.length - 64 );
+                    else var event_id = hex.substring( 4, 68 );
+                    if ( !hex.startsWith( "0020" ) ) hex = hex.substring( 0, hex.length - 64 );
+                    else hex = hex.substring( 68 );
                     var relays = [];
                     var loop = () => {
                         if ( hex.startsWith( "01" ) ) {
                             var relay_length = parseInt( hex.substring( 2, 4 ), 16 );
-                            relays.push( statechainjs.hexToText( hex.substring( 4, 4 + relay_length * 2 ) ) );
+                            relays.push( super_nostr.hexToText( hex.substring( 4, 4 + relay_length * 2 ) ) );
                             hex = hex.substring( 4 + relay_length * 2 );
                             loop();
                         }
