@@ -71,8 +71,11 @@
         <div class="operator_list"></div>
         <script>
             var handled_events = {}
-            var handleEvent = event => {
-                var content = JSON.parse( event.content );
+            var handleEvent = message => {
+                var [ type, subId, event ] = JSON.parse( message.data );
+                var { kind, content } = event || {}
+                if ( !event || event === true ) return;
+                var content = JSON.parse( content );
                 var nprofile = content.msg.nprofile;
                 if ( nprofile in handled_events ) return;
                 handled_events[ nprofile ] = event;
