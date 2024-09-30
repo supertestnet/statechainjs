@@ -82,13 +82,14 @@
             var init = async () => {
                 var relay = "wss://nostrue.com";
                 var ids = null;
+                var authors = null;
                 var kinds = [ 56899 ];
                 var until = Math.floor( Date.now() / 1000 );
                 var since = until - 600;
                 var limit = null;
                 var etags = null;
                 var ptags = null;
-                var events = await super_nostr.getEvents( relay, ids, kinds, until, since, limit, etags, ptags );
+                var events = await super_nostr.getEvents( relay, ids, authors, kinds, until, since, limit, etags, ptags );
                 events.forEach( handleEvent );
                 if ( events.length ) $( '.loading' ).classList.add( "hidden" );
                 else {
