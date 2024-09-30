@@ -74,28 +74,9 @@
             var handleEvent = event => {
                 var content = JSON.parse( event.content );
                 var nprofile = content.msg.nprofile;
+                if ( nprofile in handled_events ) return;
                 handled_events[ nprofile ] = event;
-            }
-            if ( $_GET[ "confused" ] === "true" ) $( '.explainer' ).classList.remove( "hidden" );
-        </script>
-        <script>
-            var init = async () => {
-                var relay = "wss://nostrue.com";
-                var ids = null;
-                var authors = null;
-                var kinds = [ 56899 ];
-                var until = Math.floor( Date.now() / 1000 );
-                var since = until - 600;
-                var limit = null;
-                var etags = null;
-                var ptags = null;
-                var events = await super_nostr.getEvents( relay, ids, authors, kinds, until, since, limit, etags, ptags );
-                events.forEach( handleEvent );
-                if ( events.length ) $( '.loading' ).classList.add( "hidden" );
-                else {
-                    $( '.loading' ).innerText = "None found";
-                    $( '.loading' ).classList.remove( "hidden" );
-                }
+                $( '.loading' ).classList.add( "hidden" );
                 var i; for ( i=0; i<Object.keys( handled_events ).length; i++ ) {
                     var nprofile = Object.keys( handled_events )[ i ];
                     var timestamp = handled_events[ nprofile ].created_at;
@@ -112,12 +93,64 @@
                     $( '.operator_list' ).append( p );
                 }
             }
-            var loop = async () => {
-                init();
-                await super_nostr.waitSomeSeconds( 10 );
-                loop();
+            if ( $_GET[ "confused" ] === "true" ) $( '.explainer' ).classList.remove( "hidden" );
+        </script>
+        <script>
+            var socket = null;
+            var listen = async socket => {
+                var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
+                var filter  = {}
+                filter.kinds = [ 56899 ];
+                filter.since = Math.floor( Date.now() / 1000 );
+                var subscription = [ "REQ", subId, filter ];
+                socket.send( JSON.stringify( subscription ) );
             }
-            loop();
+            var nostrLoop = async () => {
+                var relay = "wss://nostrue.com";
+                socket = new WebSocket( relay );
+                socket.addEventListener( 'message', handleEvent );
+                socket.addEventListener( 'open', ()=>{listen( socket );} );
+                var connection_failure = false;
+                var innerLoop = async ( tries = 0 ) => {
+                    if ( connection_failure ) return alert( `your connection to nostr failed and could not be restarted, please refresh the page` );
+                    if ( socket.readyState === 1 ) {
+                        await super_nostr.waitSomeSeconds( 1 );
+                        return innerLoop();
+                    }
+                    // if there is no connection, check if we are still connecting
+                    // give it two chances to connect if so
+                    if ( socket.readyState === 0 && !tries ) {
+                        await super_nostr.waitSomeSeconds( 1 );
+                        return innerLoop( 1 );
+                    }
+                    if ( socket.readyState === 0 && tries ) {
+                        connection_failure = true;
+                        return;
+                    }
+                    // otherwise, it is either closing or closed
+                    // ensure it is closed, then make a new connection
+                    socket.close();
+                    await super_nostr.waitSomeSeconds( 1 );
+                    socket = new WebSocket( relay );
+                    socket.addEventListener( 'message', handleEvent );
+                    socket.addEventListener( 'open', ()=>{listen( socket );} );
+                    await innerLoop();
+                }
+                await innerLoop();
+                await nostrLoop();
+            }
+            nostrLoop();
+        </script>
+        <script>
+            var init = async () => {
+                await super_nostr.waitSomeSeconds( 3 );
+                if ( !Object.keys( handled_events ).length ) {
+                    $( '.loading' ).innerText = "None found";
+                    $( '.loading' ).classList.remove( "hidden" );
+                }
+                init();
+            }
+            init();
         </script>
     </body>
 </html>
