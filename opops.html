@@ -77,7 +77,7 @@
                 if ( !event || event === true ) return;
                 var content = JSON.parse( content );
                 var nprofile = content.msg.nprofile;
-                if ( nprofile in handled_events && event.pubkey !== handled_events[ nprofile ].pubkey ) return;
+                if ( nprofile in handled_events ) return;
                 handled_events[ nprofile ] = event;
                 $( '.loading' ).classList.add( "hidden" );
                 var i; for ( i=0; i<Object.keys( handled_events ).length; i++ ) {
