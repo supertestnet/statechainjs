@@ -146,7 +146,7 @@
         </script>
         <script>
             var init = async () => {
-                await super_nostr.waitSomeSeconds( 3 );
+                await super_nostr.waitSomeSeconds( 1 );
                 var now = Math.floor( Date.now() / 1000 );
                 Object.keys( handled_events ).forEach( nprofile => {
                     var created_at = handled_events[ nprofile ].created_at;
