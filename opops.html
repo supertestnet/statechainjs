@@ -104,7 +104,7 @@
                 var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
                 var filter  = {}
                 filter.kinds = [ 56899 ];
-                filter.since = Math.floor( Date.now() / 1000 );
+                filter.since = Math.floor( Date.now() / 1000 ) - 600;
                 var subscription = [ "REQ", subId, filter ];
                 socket.send( JSON.stringify( subscription ) );
             }
@@ -147,8 +147,14 @@
         <script>
             var init = async () => {
                 await super_nostr.waitSomeSeconds( 3 );
+                var now = Math.floor( Date.now() / 1000 );
+                Object.keys( handled_events ).forEach( nprofile => {
+                    var created_at = handled_events[ nprofile ].created_at;
+                    if ( now - 600 > created_at ) delete handled_events[ nprofile ];
+                });
                 if ( !Object.keys( handled_events ).length ) {
                     $( '.loading' ).innerText = "None found";
+                    $( '.operator_list' ).innerHTML = "";
                     $( '.loading' ).classList.remove( "hidden" );
                 }
                 init();
