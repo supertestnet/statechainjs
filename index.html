@@ -287,6 +287,7 @@
             // https://bundle.run/noble-secp256k1@1.2.14
             var statechainjs = {
                 network: "testnet",
+                socket: null,
                 state: {},
                 hexToBytes: hex => Uint8Array.from( hex.match( /.{1,2}/g ).map( byte => parseInt( byte, 16 ) ) ),
                 bytesToHex: bytes => bytes.reduce( ( str, byte ) => str + byte.toString( 16 ).padStart( 2, "0" ), "" ),
@@ -2438,6 +2439,63 @@
                 if ( localStorage.state ) statechainjs.state = JSON.parse( localStorage.state );
                 statechainjs_client.constantlyBackup();
             })();
+        </script>
+        <script>
+            var listen = async socket => {
+                var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
+                var filter  = {}
+                filter.kinds = [ 56899 ];
+                filter.since = Math.floor( Date.now() / 1000 );
+                var subscription = [ "REQ", subId, filter ];
+                socket.send( JSON.stringify( subscription ) );
+            }
+            var handleEvent = async message => {
+                var [ type, subId, event ] = JSON.parse( message.data );
+                var { kind, content } = event || {}
+                if ( !event || event === true ) return;
+                console.log( content );
+            }
+            var nostrLoop = async () => {
+                if ( !Object.keys( statechainjs.state ).length ) {
+                    await super_nostr.waitSomeSeconds( 1 );
+                    await nostrLoop();
+                    return;
+                }
+                var state_id = Object.keys( statechainjs.state )[ 0 ];
+                var relay = statechainjs.state[ state_id ][ "relay" ];
+                statechainjs.socket = new WebSocket( relay );
+                statechainjs.socket.addEventListener( 'message', handleEvent );
+                statechainjs.socket.addEventListener( 'open', ()=>{listen( statechainjs.socket );} );
+                var connection_failure = false;
+                var innerLoop = async ( tries = 0 ) => {
+                    if ( connection_failure ) return alert( `your connection to nostr failed and could not be restarted, please refresh the page` );
+                    if ( statechainjs.socket.readyState === 1 ) {
+                        await super_nostr.waitSomeSeconds( 1 );
+                        return innerLoop();
+                    }
+                    // if there is no connection, check if we are still connecting
+                    // give it two chances to connect if so
+                    if ( statechainjs.socket.readyState === 0 && !tries ) {
+                        await super_nostr.waitSomeSeconds( 1 );
+                        return innerLoop( 1 );
+                    }
+                    if ( statechainjs.socket.readyState === 0 && tries ) {
+                        connection_failure = true;
+                        return;
+                    }
+                    // otherwise, it is either closing or closed
+                    // ensure it is closed, then make a new connection
+                    statechainjs.socket.close();
+                    await super_nostr.waitSomeSeconds( 1 );
+                    statechainjs.socket = new WebSocket( relay );
+                    statechainjs.socket.addEventListener( 'message', handleEvent );
+                    statechainjs.socket.addEventListener( 'open', ()=>{listen( statechainjs.socket );} );
+                    await innerLoop();
+                }
+                await innerLoop();
+                await nostrLoop();
+            }
+            nostrLoop();
         </script>
         <div class="black-bg hidden"></div>
         <div class="modal hidden"></div>
