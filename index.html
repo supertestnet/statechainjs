@@ -559,6 +559,7 @@
 
                     // Get backout tx with timelock
 
+                    console.log( 88, amnt );
                     var funding_txdata = tapscript.Tx.create({
                         vin: [{
                             txid: utxo[ "txid" ],
@@ -582,6 +583,7 @@
                     // For each utxo, get sigs that send the utxo to the
                     // depositor after 2016 blocks
                     var i; for ( i=0; i<decomposed.length; i++ ) {
+                        var amnt = decomposed[ i ];
                         var coin = {
                             state_id,
                             type: "statecoin",
@@ -1462,7 +1464,6 @@
                     statechainjs.makeOperator();
                     var state_id = Object.keys( statechainjs.state )[ 0 ];
                     console.log( "nprofile:", state_id );
-                    statechainjs_client.listenLoop( state_id );
                     return state_id;
                 },
                 contactOperator: async ( msg, nprofile, state_id ) => {
@@ -1504,30 +1505,6 @@
                     }
                     var reply = await loop();
                     return reply;
-                },
-                listenLoop: async state_id => {
-                    var state = statechainjs.state[ state_id ];
-                    var relay = state[ "relay" ];
-                    var ids = null;
-                    var authors = null;
-                    var kinds = [ 4 ];
-                    var until = null;
-                    var since = Math.floor( Date.now() / 1000 ) - 5;
-                    var limit = null;
-                    var etags = null;
-                    var ptags = [ state[ "pubkey" ] ];
-                    var events = await super_nostr.getEvents( relay, ids, authors, kinds, until, since, limit, etags, ptags );
-                    var unhandled_events = [];
-                    events.forEach( item => {
-                        if ( statechainjs_client.handled_events.includes( item[ "id" ] ) ) return;
-                        statechainjs_client.handled_events.push( item[ "id" ] );
-                        unhandled_events.push( item );
-                    });
-                    await super_nostr.waitSomeSeconds( 4 );
-                    try {
-                        unhandled_events.forEach( item => {statechainjs_client.handleEvent( state_id, item )} );
-                    } catch( e ) {}
-                    statechainjs_client.listenLoop( state_id );
                 },
                 populateCoinboxes: async () => {
                     var add_utxo_html = `
@@ -2428,74 +2405,77 @@
                     if ( !Object.keys( statechainjs.state ).length ) var nprofile = await statechainjs_client.makeOperator();
                     else {
                         var nprofile = Object.keys( statechainjs.state )[ 0 ];
-                        statechainjs_client.listenLoop( nprofile );
                     }
                     statechainjs_client.announceOperator( nprofile );
                     $( '.operator_page' ).innerHTML = `
                         <h2>Your nprofile is:</h2>
                         <p>${nprofile}</p>
                     `;
+                    var listen = async socket => {
+                        var state_id = Object.keys( statechainjs.state )[ 0 ];
+                        var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
+                        var filter  = {}
+                        filter.kinds = [ 4 ];
+                        filter.since = Math.floor( Date.now() / 1000 );
+                        filter[ "#p" ] = [ statechainjs.state[ state_id ][ "pubkey" ] ];
+                        var subscription = [ "REQ", subId, filter ];
+                        socket.send( JSON.stringify( subscription ) );
+                    }
+                    var nostrLoop = async () => {
+                        if ( !Object.keys( statechainjs.state ).length ) {
+                            await super_nostr.waitSomeSeconds( 1 );
+                            await nostrLoop();
+                            return;
+                        }
+                        var state_id = Object.keys( statechainjs.state )[ 0 ];
+                        var relay = statechainjs.state[ state_id ][ "relay" ];
+                        statechainjs.socket = new WebSocket( relay );
+                        statechainjs.socket.addEventListener( 'message', e => {
+                            var [ type, subId, event ] = JSON.parse( e.data );
+                            var { kind, content } = event || {}
+                            if ( !event || event === true ) return;
+                            statechainjs_client.handleEvent( state_id, event );
+                        });
+                        statechainjs.socket.addEventListener( 'open', ()=>{listen( statechainjs.socket );} );
+                        var connection_failure = false;
+                        var innerLoop = async ( tries = 0 ) => {
+                            if ( connection_failure ) return alert( `your connection to nostr failed and could not be restarted, please refresh the page` );
+                            if ( statechainjs.socket.readyState === 1 ) {
+                                await super_nostr.waitSomeSeconds( 1 );
+                                return innerLoop();
+                            }
+                            // if there is no connection, check if we are still connecting
+                            // give it two chances to connect if so
+                            if ( statechainjs.socket.readyState === 0 && !tries ) {
+                                await super_nostr.waitSomeSeconds( 1 );
+                                return innerLoop( 1 );
+                            }
+                            if ( statechainjs.socket.readyState === 0 && tries ) {
+                                connection_failure = true;
+                                return;
+                            }
+                            // otherwise, it is either closing or closed
+                            // ensure it is closed, then make a new connection
+                            statechainjs.socket.close();
+                            await super_nostr.waitSomeSeconds( 1 );
+                            statechainjs.socket = new WebSocket( relay );
+                            statechainjs.socket.addEventListener( 'message', e => {
+                                var [ type, subId, event ] = JSON.parse( e.data );
+                                var { kind, content } = event || {}
+                                if ( !event || event === true ) return;
+                                statechainjs_client.handleEvent( state_id, event );
+                            });
+                            statechainjs.socket.addEventListener( 'open', ()=>{listen( statechainjs.socket );} );
+                            await innerLoop();
+                        }
+                        await innerLoop();
+                        await nostrLoop();
+                    }
+                    nostrLoop();
                 }
                 if ( localStorage.state ) statechainjs.state = JSON.parse( localStorage.state );
                 statechainjs_client.constantlyBackup();
             })();
-        </script>
-        <script>
-            var listen = async socket => {
-                var subId = super_nostr.bytesToHex( nobleSecp256k1.utils.randomPrivateKey() ).substring( 0, 16 );
-                var filter  = {}
-                filter.kinds = [ 56899 ];
-                filter.since = Math.floor( Date.now() / 1000 );
-                var subscription = [ "REQ", subId, filter ];
-                socket.send( JSON.stringify( subscription ) );
-            }
-            var handleEvent = async message => {
-                var [ type, subId, event ] = JSON.parse( message.data );
-                var { kind, content } = event || {}
-                if ( !event || event === true ) return;
-                console.log( content );
-            }
-            var nostrLoop = async () => {
-                if ( !Object.keys( statechainjs.state ).length ) {
-                    await super_nostr.waitSomeSeconds( 1 );
-                    await nostrLoop();
-                    return;
-                }
-                var state_id = Object.keys( statechainjs.state )[ 0 ];
-                var relay = statechainjs.state[ state_id ][ "relay" ];
-                statechainjs.socket = new WebSocket( relay );
-                statechainjs.socket.addEventListener( 'message', handleEvent );
-                statechainjs.socket.addEventListener( 'open', ()=>{listen( statechainjs.socket );} );
-                var connection_failure = false;
-                var innerLoop = async ( tries = 0 ) => {
-                    if ( connection_failure ) return alert( `your connection to nostr failed and could not be restarted, please refresh the page` );
-                    if ( statechainjs.socket.readyState === 1 ) {
-                        await super_nostr.waitSomeSeconds( 1 );
-                        return innerLoop();
-                    }
-                    // if there is no connection, check if we are still connecting
-                    // give it two chances to connect if so
-                    if ( statechainjs.socket.readyState === 0 && !tries ) {
-                        await super_nostr.waitSomeSeconds( 1 );
-                        return innerLoop( 1 );
-                    }
-                    if ( statechainjs.socket.readyState === 0 && tries ) {
-                        connection_failure = true;
-                        return;
-                    }
-                    // otherwise, it is either closing or closed
-                    // ensure it is closed, then make a new connection
-                    statechainjs.socket.close();
-                    await super_nostr.waitSomeSeconds( 1 );
-                    statechainjs.socket = new WebSocket( relay );
-                    statechainjs.socket.addEventListener( 'message', handleEvent );
-                    statechainjs.socket.addEventListener( 'open', ()=>{listen( statechainjs.socket );} );
-                    await innerLoop();
-                }
-                await innerLoop();
-                await nostrLoop();
-            }
-            nostrLoop();
         </script>
         <div class="black-bg hidden"></div>
         <div class="modal hidden"></div>
