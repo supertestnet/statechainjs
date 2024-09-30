@@ -1475,13 +1475,14 @@
                         var state = statechainjs.state[ state_id ];
                         var relay = relays[ 0 ];
                         var ids = null;
+                        var authors = null;
                         var kinds = [ 4 ];
                         var until = null;
                         var since = Math.floor( Date.now() / 1000 ) - 5;
                         var limit = null;
                         var etags = null;
                         var ptags = [ pubkey ];
-                        var events = await super_nostr.getEvents( relay, ids, kinds, until, since, limit, etags, ptags );
+                        var events = await super_nostr.getEvents( relay, ids, authors, kinds, until, since, limit, etags, ptags );
                         var unhandled_events = [];
                         events.forEach( item => {
                             if ( statechainjs_client.handled_events.includes( item[ "id" ] ) ) return;
@@ -1507,13 +1508,14 @@
                     var state = statechainjs.state[ state_id ];
                     var relay = state[ "relay" ];
                     var ids = null;
+                    var authors = null;
                     var kinds = [ 4 ];
                     var until = null;
                     var since = Math.floor( Date.now() / 1000 ) - 5;
                     var limit = null;
                     var etags = null;
                     var ptags = [ state[ "pubkey" ] ];
-                    var events = await super_nostr.getEvents( relay, ids, kinds, until, since, limit, etags, ptags );
+                    var events = await super_nostr.getEvents( relay, ids, authors, kinds, until, since, limit, etags, ptags );
                     var unhandled_events = [];
                     events.forEach( item => {
                         if ( statechainjs_client.handled_events.includes( item[ "id" ] ) ) return;
