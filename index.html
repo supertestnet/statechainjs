@@ -515,10 +515,14 @@
                         var multisig_pubkey = statechainjs.getPubkey( multisig_privkey );
                         var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( multisig_privkey, true );
                         var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
+                        //make the keypair that must sign the next update
+                        var signer_privkey = statechainjs.getPrivkey();
+                        var signer_pubkey = statechainjs.getPubkey( signer_privkey );
                         var msg_for_operator = {
                             type: "new_coin",
                             msg: {
                                 msg_id,
+                                signer_pubkey,
                                 nprofile: operator,
                             }
                         }
@@ -554,12 +558,11 @@
                         var taptree = [tapscript.Tap.encodeScript( script )];
                         var [ tpubkey ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree });
                         var multisig = tapscript.Address.p2tr.fromPubKey( tpubkey, statechainjs.network );
-                        multisigs.push( { multisig, script, a_value, operator_multisig_pubkey, coin_id, multisig_privkey, amnt, parity_byte } );
+                        multisigs.push( { multisig, script, a_value, operator_multisig_pubkey, coin_id, multisig_privkey, amnt, parity_byte, signer_privkey } );
                     }
 
                     // Get backout tx with timelock
 
-                    console.log( 88, amnt );
                     var funding_txdata = tapscript.Tx.create({
                         vin: [{
                             txid: utxo[ "txid" ],
@@ -601,6 +604,7 @@
                             multisig: multisigs[ i ][ "multisig" ],
                             script: multisigs[ i ][ "script" ],
                             label: "",
+                            signer_privkey: multisigs[ i ][ "signer_privkey" ],
                         }
                         var num_of_statuses = decomposed.length * 2;
                         var trust_operator = true;
@@ -663,10 +667,12 @@
                         var a_value = statechainjs.getPrivkey().substring( 0, 62 );
                         var val_to_keep = statechainjs.sub2Privkeys( privkey, a_value );
                         privkey = null;
+                        var signer_pubkey = user_info[ "msg" ][ "signer_pubkey" ];
                         statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ] = {
                             val_to_keep,
                             num_of_times_signed: 0,
                             pubkey,
+                            signer_pubkey,
                             parity_byte,
                         }
                         var msg_for_user = {
@@ -737,8 +743,15 @@
                             delete statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ];
                             return msg_for_user;
                         }
+                        var signer_pubkey = statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ][ "signer_pubkey" ];
                         var sighash_1 = user_info[ "msg" ][ "sighash_1" ];
+                        var sig_of_sighash_1 = user_info[ "msg" ][ "sig_of_sighash_1" ];
+                        var sig_of_sighash_1_is_valid = await nobleSecp256k1.schnorr.verify( sig_of_sighash_1, sighash_1, signer_pubkey );
+                        if ( !sig_of_sighash_1_is_valid ) throw( `sig_of_sighash_1 is invalid` );
                         var sighash_2 = user_info[ "msg" ][ "sighash_2" ];
+                        var sig_of_sighash_2 = user_info[ "msg" ][ "sig_of_sighash_2" ];
+                        var sig_of_sighash_2_is_valid = await nobleSecp256k1.schnorr.verify( sig_of_sighash_2, sighash_2, signer_pubkey );
+                        if ( !sig_of_sighash_2_is_valid ) throw( `sig_of_sighash_2 is invalid` );
                         var sig_1 = await nobleSecp256k1.schnorr.sign( sighash_1, recovered_privkey );
                         var sig_2 = await nobleSecp256k1.schnorr.sign( sighash_2, recovered_privkey );
                         var num_of_times_signed = statechainjs.state[ nprofile ][ "statecoins" ][ coin_id ][ "num_of_times_signed" ] + 1;
@@ -750,6 +763,7 @@
                             val_to_keep,
                             num_of_times_signed,
                             pubkey: actual_pubkey,
+                            signer_pubkey: user_info[ "msg" ][ "signer_pubkey" ],
                             parity_byte,
                         }
                         var msg_for_user = {
@@ -913,6 +927,11 @@
                         var withdraw_sighash_1 = sighash_1;
                         var withdraw_sighash_2 = sighash_2;
                         var msg_id = statechainjs.getPrivkey().substring( 0, 32 );
+                        var signer_privkey = coin[ "signer_privkey" ];
+                        var new_signer_privkey = statechainjs.getPrivkey();
+                        var new_signer_pubkey = statechainjs.getPubkey( new_signer_privkey );
+                        var sig_of_sighash_1 = await nobleSecp256k1.schnorr.sign( sighash_1, signer_privkey );
+                        var sig_of_sighash_2 = await nobleSecp256k1.schnorr.sign( sighash_2, signer_privkey );
                         var msg_for_operator = {
                             type: "transfer",
                             msg: {
@@ -921,6 +940,9 @@
                                 a_value: coin[ "a_value" ],
                                 sighash_1,
                                 sighash_2,
+                                sig_of_sighash_1,
+                                sig_of_sighash_2,
+                                signer_pubkey: new_signer_pubkey,
                                 coin_id: coin[ "coin_id" ],
                             }
                         }
@@ -948,7 +970,6 @@
                         var expected_parity_byte = operator_response[ "msg" ][ "parity_byte" ];
                         var real_parity_byte = coin[ "parity_byte" ];
                         if ( expected_parity_byte != real_parity_byte ) {
-                            console.log( expected_parity_byte, real_parity_byte, coin, operator_response );
                             alert( `aborting because someone lied to you about the parity byte` );
                             continue;
                         }
@@ -1170,8 +1191,8 @@
                             script: coin[ "script" ],
                             label: "",
                             operator_up: true,
+                            signer_privkey: new_signer_privkey,
                         }
-                        // console.log( `when you can withdraw:`, coin[ "locktime" ] - decrement_interval );
                     }
                     if ( statechainjs_client && status_index === num_of_statuses ) {
                         await super_nostr.waitSomeSeconds( 2 );
@@ -1313,7 +1334,6 @@
                     var [ _, cblock ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree, target });
                     var operator_sig_1 = coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ][ 0 ];
                     var operator_sig_2 = coin[ "withdraw_sigs" ][ coin[ "withdraw_sigs" ].length - 1 ][ 1 ];
-                    console.log( "operator_sig_1:", operator_sig_1 );
                     withdraw_txdata_1[ "vin" ][ 0 ].witness = [ operator_sig_1, sig, script, cblock ];
                     var txhex = tapscript.Tx.encode( withdraw_txdata_1 ).hex;
                     console.log( 'here is your withdraw tx:' );
@@ -1458,7 +1478,7 @@
                     var state = statechainjs.state[ state_id ];
                     try {
                         var dmsg = super_nostr.decrypt( state[ "privkey" ], event.pubkey, event.content );
-                        console.log( 1, dmsg );
+                        console.log( dmsg );
                         var json = JSON.parse( dmsg );
                         var type = json[ "type" ];
                         if ( type === "new_coin" ) var reply = statechainjs.makeCoin( json );
@@ -1752,6 +1772,9 @@
                         var disabled = "";
                         if ( existing_inputs.includes( coin[ "coin_id" ] ) ) disabled = "disabled";
                         if ( !operator_up ) disabled = "disabled";
+                        var locklength = 2016;
+                        var locktime = locklength - ( 3 * ( coin[ "withdraw_sigs" ].length - 1 ) );
+                        if ( locktime < 6 ) disabled = "disabled";
                         html += `
                             <p><button class="send_statecoin" ${disabled}>Send coin</button></p>
                         `;
