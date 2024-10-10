@@ -595,7 +595,7 @@
                             vout: i,
                             a_value: multisigs[ i ][ "a_value" ],
                             withdraw_sigs: [],
-                            prior_txs: [],
+                            prior_recipients: [],
                             privkey: multisigs[ i ][ "multisig_privkey" ],
                             amnt,
                             multisig: multisigs[ i ][ "multisig" ],
@@ -963,16 +963,16 @@
                             continue;
                         }
                         var coin_id = coin[ "coin_id" ];
-                        var prior_txs = coin[ "prior_txs" ];
-                        if ( num_of_times_signed - 1 != prior_txs.length || prior_txs.length != withdraw_sigs.length ) {
-                            alert( `aborting because one of these numbers didn't match: prior_sigs.length, prior_txs.length, num_of_times_signed` );
+                        var prior_recipients = coin[ "prior_recipients" ];
+                        if ( num_of_times_signed - 1 != prior_recipients.length || prior_recipients.length != withdraw_sigs.length ) {
+                            alert( `aborting because one of these numbers didn't match: prior_sigs.length, prior_recipients.length, num_of_times_signed` );
                             continue;
                         }
                         var tx_info = null;
                         var prior_txid = null;
                         var prior_vout = null;
                         var dont_add = false;
-                        var i; for ( i=0; i<prior_txs.length; i++ ) {
+                        var i; for ( i=0; i<prior_recipients.length; i++ ) {
                             var prior_sig_1 = withdraw_sigs[ i ][ 0 ].substring( 0, 128 );
                             var prior_sig_2 = withdraw_sigs[ i ][ 1 ].substring( 0, 128 );
                             var tx_1 = tapscript.Tx.create({
@@ -990,27 +990,35 @@
                                 }],
                             });
                             var tx_1_txid = tapscript.Tx.util.getTxid( tx_1 );
-                            var tx_2 = tapscript.Tx.decode( prior_txs[ i ][ 0 ] );
-                            if ( tx_2[ "vin" ].length !== 1 ) {
-                                alert( `aborting because invalid number of inputs in prior transfer` );
+                            //TODO: ensure recipient is a valid taproot address
+                            //and that the amount sent there is compatible with its kind
+                            var recipient = prior_recipients[ i ];
+                            try {
+                                var addy_is_valid = tapscript.Address.decode( recipient ).type === "p2tr";
+                                if ( !addy_is_valid ) throw( 'wrong output type' );
+                                if ( tapscript.Address.decode( recipient ).script[ 0 ] !== "OP_1" ) throw( 'wrong output type' );
+                                if ( tapscript.Address.decode( recipient ).script[ 1 ].length != 64 ) throw( 'wrong output type' );
+                            } catch( e ) {
+                                alert( `aborting because a recipient in the chain didn't use a taproot address` );
                                 dont_add = true;
                                 continue;
                             }
-                            if ( tx_2[ "vin" ][ 0 ].txid !== tx_1_txid ) {
-                                alert( `aborting because prior transfer had wrong txid` );
-                                dont_add = true;
-                                continue;
-                            }
-                            if ( tx_2[ "vin" ][ 0 ].vout !== 0 ) {
-                                alert( `aborting because prior transfer had wrong vout` );
-                                dont_add = true;
-                                continue;
-                            }
-                            if ( parseInt( tx_2[ "vin" ][ 0 ].sequence, 16 ) + ( 3 * i ) !== locklength ) {
-                                alert( `aborting because invalid prior locktime` );
-                                continue;
-                            }
-                            var prior_script = prior_txs[ i ][ 1 ];
+                            var tx_2 = tapscript.Tx.create({
+                                vin: [{
+                                    txid: tx_1_txid,
+                                    vout: 0,
+                                    prevout: {
+                                        value: amnt - 500,
+                                        scriptPubKey: tapscript.Address.toScriptPubKey( coin[ "multisig" ] ),
+                                    },
+                                    sequence: locklength - ( 3 * i ),
+                                }],
+                                vout: [{
+                                    value: amnt - 500,
+                                    scriptPubKey: tapscript.Address.toScriptPubKey( recipient ),
+                                }],
+                            });
+                            var prior_script = coin[ "script" ];
                             var prior_target = tapscript.Tap.encodeScript( prior_script );
                             if ( !prior_txid ) prior_txid = tx_1.vin[ 0 ].txid;
                             else if ( tx_1.vin[ 0 ].txid !== prior_txid ) {
@@ -1143,7 +1151,7 @@
                         }
                         if ( dont_add ) continue;
                         withdraw_sigs.push( [ withdraw_sig_1, withdraw_sig_2 ] );
-                        prior_txs.push( [ tapscript.Tx.encode( withdraw_txdata_2 ).hex, coin[ "script" ] ] );
+                        prior_recipients.push( tapscript.Address.fromScriptPubKey( withdraw_txdata_2.vout[ 0 ].scriptPubKey ) );
                         statechainjs.state[ state_id ][ "statecoins" ][ coin_id ] = {
                             state_id,
                             type: "statecoin",
@@ -1155,7 +1163,7 @@
                             vout: coin[ "vout" ],
                             a_value,
                             withdraw_sigs,
-                            prior_txs,
+                            prior_recipients,
                             privkey: coin[ "privkey" ],
                             amnt: coin[ "amnt" ],
                             multisig: coin[ "multisig" ],
@@ -1273,8 +1281,8 @@
                     var locktimes = [];
                     coin_ids.forEach( ( id, index ) => {
                         var coin = statechainjs.state[ state_id ][ "statecoins" ][ id ];
-                        var most_recent_tx = tapscript.Tx.decode( coin[ "prior_txs" ][ coin[ "prior_txs" ].length - 1 ][ 0 ] );
-                        var most_recent_locktime = most_recent_tx[ "vin" ][ 0 ].sequence;
+                        var locklength = 2016;
+                        var most_recent_locktime = locklength - ( 3 * ( coin[ "withdraw_sigs" ].length - 1 ) );
                         if ( !locktimes.includes( coin[ "locktime" ] ) ) locktimes.push( most_recent_locktime );
                     });
                     if ( locktimes.length > 1 ) return alert( `you cannot withdraw multiple coins that have different locktimes, try again` );
@@ -1793,9 +1801,8 @@
                     if ( coin[ "type" ] === "statecoin" ) {
                         div.getElementsByClassName( "view_wait_time" )[ 0 ].onclick = async () => {
                             var inner = document.createElement( "div" );
-                            var current_blockheight = await statechainjs.getBlockheight();
-                            var most_recent_tx = tapscript.Tx.decode( coin[ "prior_txs" ][ coin[ "prior_txs" ].length - 1 ][ 0 ] );
-                            var locktime = parseInt( most_recent_tx[ "vin" ][ 0 ].sequence, 16 );
+                            var locklength = 2016;
+                            var locktime = locklength - ( 3 * ( coin[ "withdraw_sigs" ].length - 1 ) );
                             inner.innerHTML = `
                                 <div>
                                     <p>Wait time if you unilaterally withdraw: ${locktime} blocks</p>
