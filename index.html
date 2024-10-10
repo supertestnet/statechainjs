@@ -1307,7 +1307,7 @@
                         if ( !locktimes.includes( coin[ "locktime" ] ) ) locktimes.push( most_recent_locktime );
                     });
                     if ( locktimes.length > 1 ) return alert( `you cannot withdraw multiple coins that have different locktimes, try again` );
-                    var locktime = parseInt( locktimes[ 0 ], 16 );
+                    var locktime = locktimes[ 0 ];
                     var coin = statechainjs.state[ state_id ][ "statecoins" ][ coin_ids[ 0 ] ];
                     var withdraw_txdata_1 = tapscript.Tx.create({
                         vin: [{
@@ -1793,7 +1793,7 @@
                             <p><button class="view_wait_time">View wait time</button></p>
                         `;
                         html += `
-                            <p><button class="proof_of_liabilities">Proof of liabilities</button></p>
+                            <p><button class="proof_of_reserves">Proof of reserves</button></p>
                         `;
                     }
                     html += `
@@ -1848,7 +1848,7 @@
                             statechainjs.unilaterallyWithdrawFromStatechain( coin[ "state_id" ], [ coin[ "coin_id" ] ] );
                             modalVanish();
                         }
-                        div.getElementsByClassName( "proof_of_liabilities" )[ 0 ].onclick = async () => {
+                        div.getElementsByClassName( "proof_of_reserves" )[ 0 ].onclick = async () => {
                             var inner = document.createElement( "div" );
                             var operator_pubkey_with_parity = coin[ "parity_byte" ] + coin[ "script" ][ 2 ];
                             var multisig_pubkey_with_parity = nobleSecp256k1.getPublicKey( coin[ "privkey" ], true );
