@@ -34,6 +34,7 @@ Also, the first thing you do when you create or receive a statechain utxo is cre
 
 - Statechains were originally designed for a federated model with multiple operators. Whether to use musig or regular multisig was left unspecified
 - Timelock type: whether to use absolute timelocks or relative timelocks was left unspecified
+- Key handling: whether to use an HSM or memory wiping to securely delete sensitive data was left unspecified
 - Adaptor signatures allow everyone to see each signature created by the operator, so they can see if he colludes with a prior holder to try and cheat the latest holder
 
 StatechainJS implementation
