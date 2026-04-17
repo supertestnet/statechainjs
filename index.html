@@ -1765,7 +1765,7 @@
                     }
                     if ( coin[ "type" ] === "statecoin" ) {
                         if ( !operator_up ) html += `
-                            <p class="warning">This coin's operator is down! Withdraw unilaterally or you may lose your funds</p>
+                            <p class="warning">This coin's operator is down! Do a semi-unilateral withdrawal or you may lose your funds</p>
                         `;
                         var existing_inputs = [];
                         statechainjs_client.sc_tx_inputs.forEach( item => existing_inputs.push( item[ "coin_id" ] ) );
@@ -1787,7 +1787,7 @@
                             <p><button class="add_to_tx" ${disabled}>Add to withdrawal tx</button></p>
                         `;
                         html += `
-                            <p><button class="withdraw_unilaterally">Withdraw unilaterally</button></p>
+                            <p><button class="withdraw_unilaterally">Semi-unilateral withdrawal</button></p>
                         `;
                         html += `
                             <p><button class="view_wait_time">View wait time</button></p>
@@ -1828,7 +1828,7 @@
                             var locktime = locklength - ( 3 * ( coin[ "withdraw_sigs" ].length - 1 ) );
                             inner.innerHTML = `
                                 <div>
-                                    <p>Wait time if you unilaterally withdraw: ${locktime} blocks</p>
+                                    <p>Wait time if you do a semi-unilateral withdrawal: ${locktime} blocks</p>
                                     <p>Wait time if you cooperatively withdraw: 0 blocks</p>
                                 </div>
                             `;
@@ -1920,7 +1920,7 @@
                                     <p>${coin[ "script" ][ 2 ]}</p>
                                     <p>Kickoff transaction</p>
                                     <p>${JSON.stringify( withdraw_txdata_1 )}</p>
-                                    <p>The signature above, created by the operator, has been validated: ${sig_1_is_valid}. It allows you to broadcast the "kickoff transaction," which starts the clock on your unilateral withdrawal transaction.</p>
+                                    <p>The signature above, created by the operator, has been validated: ${sig_1_is_valid}. It allows you to broadcast the "kickoff transaction," which starts the clock on your semi-unilateral withdrawal transaction.</p>
                                     <p>Signature 2</p>
                                     <p>${sig_2}</p>
                                     <p>Sighash 2 (uses sighash_single | anyone_can_pay)</p>
@@ -1929,8 +1929,8 @@
                                     <p>${coin[ "script" ][ 2 ]}</p>
                                     <p>Withdrawal transaction</p>
                                     <p>${JSON.stringify( withdraw_txdata_2 )}</p>
-                                    <p>The signature above, created by the operator, has been validated: ${sig_2_is_valid}. It allows you to unilaterally withdraw from the proof_of_reserves address after a timelock expires, i.e. ${sequence_num} blocks after the kickoff transaction confirms.</p>
-                                    <p>The above signatures demonstrate that you have all the info you need to unilaterally withdraw your money from the proof_of_reserves address, thus fulfilling any liabilities toward you. As a reminder, the basic trust assumption of a statechain is that the operator won't collude with a prior keyholder to "override" the timelock and take your money from the proof_of_reserves address before *you* can. Since the operator can do this, your "proof of liabilities" is only a "proof you are owed some money," not a "proof you will receive that money." It is possible for your liabilities to go unfulfilled if the operator robs you.</p>
+                                    <p>The signature above, created by the operator, has been validated: ${sig_2_is_valid}. It allows you to semi-unilaterally withdraw from the proof_of_reserves address after a timelock expires, i.e. ${sequence_num} blocks after the kickoff transaction confirms.</p>
+                                    <p>The above signatures demonstrate that you have all the info you need to semi-unilaterally withdraw your money from the proof_of_reserves address, thus fulfilling any liabilities toward you. As a reminder, the basic trust assumption of a statechain is that the operator won't collude with a prior keyholder to "override" the timelock and take your money from the proof_of_reserves address before *you* can. Since the operator can do this, your "proof of liabilities" is only a "proof you are owed some money," not a "proof you will receive that money." It is possible for your liabilities to go unfulfilled if the operator robs you.</p>
                                 </div>
                             `;
                             showModal( inner.firstElementChild );
@@ -2232,7 +2232,7 @@
                                     var expected_pubkey = statechainjs.getPubkey( full_privkey );
                                     var [ tpubkey ] = tapscript.Tap.getPubKey( backup_pubkey, { tree: taptree });
                                     var multisig_with_money = tapscript.Address.p2tr.fromPubKey( tpubkey, statechainjs.network );
-                                    if ( backup_pubkey !== expected_pubkey ) return alert( `you must withdraw this coin unilaterally, then try again:`, coin[ "coin_id" ], "state_id:", state_id );
+                                    if ( backup_pubkey !== expected_pubkey ) return alert( `you must withdraw this coin semi-unilaterally, then try again:`, coin[ "coin_id" ], "state_id:", state_id );
                                 }
                                 //remove the utxo from your list of utxos
                                 var state_id = coin[ "state_id" ];
